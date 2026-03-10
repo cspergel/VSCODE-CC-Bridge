@@ -1,6 +1,7 @@
 {
   "name": "@live-bridge/cli",
   "version": "0.1.0",
+  "type": "module",
   "bin": { "claude-bridge": "dist/index.js" },
   "scripts": { "build": "tsc" },
   "dependencies": {
