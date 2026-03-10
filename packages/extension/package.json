@@ -1,0 +1,46 @@
+{
+  "name": "claude-code-live-bridge",
+  "displayName": "Claude Code Live Bridge",
+  "description": "WhatsApp <-> Claude Code <-> VS Code bidirectional bridge",
+  "version": "0.1.0",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "claude-bridge", "title": "Claude Bridge", "icon": "$(radio-tower)" }
+      ]
+    },
+    "views": {
+      "claude-bridge": [
+        { "type": "webview", "id": "claudeBridge.sidebar", "name": "Live Session" }
+      ]
+    },
+    "commands": [
+      { "command": "claudeBridge.connect", "title": "Claude Bridge: Connect" },
+      { "command": "claudeBridge.disconnect", "title": "Claude Bridge: Disconnect" },
+      { "command": "claudeBridge.refreshContext", "title": "Claude Bridge: Refresh Context" },
+      { "command": "claudeBridge.setSessionName", "title": "Claude Bridge: Set Session Name" },
+      { "command": "claudeBridge.routeHere", "title": "Claude Bridge: Route WhatsApp Here" },
+      { "command": "claudeBridge.acceptAll", "title": "Claude Bridge: Accept All" },
+      { "command": "claudeBridge.rejectAll", "title": "Claude Bridge: Reject All" }
+    ]
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "@live-bridge/shared": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.0",
+    "@types/node": "^20.0.0"
+  }
+}
