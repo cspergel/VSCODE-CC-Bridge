@@ -1,0 +1,48 @@
+server:
+  port: 9377
+  host: 127.0.0.1
+  vscodePort: 9378
+
+whatsapp:
+  allowedNumbers:
+    - "+1234567890"
+  sessionPath: ~/.claude-bridge/wa-session
+  pin: "1234"
+  rateLimit:
+    maxPerHour: 30
+    burstMax: 5
+
+classifier:
+  statusBatchInterval: 10
+  waitTimeout: 500
+  maxMessageLength: 1500
+
+gitContext:
+  mode: auto
+  includeUncommittedDiff: true
+  recentCommitCount: 3
+  includeOpenFiles: true
+  maxDiffFiles: 10
+  ignorePatterns:
+    - ".env"
+    - "*.key"
+    - "*secret*"
+    - "credentials/*"
+
+safety:
+  blocklist:
+    - "rm -rf /"
+    - "sudo"
+    - "DROP TABLE"
+    - "DROP DATABASE"
+  auditLog:
+    path: ~/.claude-bridge/audit.db
+    retentionDays: 30
+
+sessions:
+  aliases:
+    chartcopilot: ["ccp", "chart"]
+    hospitalist-scheduler: ["sched"]
+  fuzzyMatch: true
+  decisionTimeout: 0
+  crossSessionNotify: true
