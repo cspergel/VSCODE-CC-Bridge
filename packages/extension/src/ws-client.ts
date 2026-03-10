@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import WebSocket from "ws";
+import * as vscode from "vscode";
 import { Envelope, createEnvelope, MessageType, Source, DEFAULTS } from "@live-bridge/shared";
 
 export class BridgeWSClient extends EventEmitter {
@@ -19,7 +20,7 @@ export class BridgeWSClient extends EventEmitter {
         type: MessageType.Control,
         source: Source.VSCode,
         sessionId: this.sessionName,
-        payload: { action: "register", name: this.sessionName, projectPath: process.cwd() },
+        payload: { action: "register", name: this.sessionName, projectPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd() },
       }));
     });
 

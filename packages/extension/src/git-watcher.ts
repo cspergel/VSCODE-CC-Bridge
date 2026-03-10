@@ -7,6 +7,8 @@ const exec = promisify(execFile);
 
 export class GitWatcher {
   private disposables: vscode.Disposable[] = [];
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly DEBOUNCE_MS = 2000;
 
   constructor(private wsClient: BridgeWSClient) {
     // File save -> refresh context
@@ -38,10 +40,15 @@ export class GitWatcher {
   }
 
   async forceRefresh(): Promise<void> {
-    await this.refresh();
+    await this.doRefresh();
   }
 
-  private async refresh(): Promise<void> {
+  private refresh(): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(() => this.doRefresh(), GitWatcher.DEBOUNCE_MS);
+  }
+
+  private async doRefresh(): Promise<void> {
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!cwd) return;
 
@@ -73,6 +80,7 @@ export class GitWatcher {
   }
 
   dispose(): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.disposables.forEach((d) => d.dispose());
   }
 }

@@ -13,6 +13,7 @@ export interface BaileysConfig {
   sessionPath: string;
   allowedNumbers: string[];
   rateLimit: { maxPerHour: number; burstMax: number };
+  pin?: string;
 }
 
 export class WhatsAppClient extends EventEmitter {
@@ -22,6 +23,7 @@ export class WhatsAppClient extends EventEmitter {
   private config: BaileysConfig;
   private reconnectDelay = 3000;
   private static readonly MAX_RECONNECT_DELAY = 60_000;
+  private pendingPinChallenges = new Map<string, { text: string; jid: string }>();
 
   constructor(config: BaileysConfig) {
     super();
@@ -87,18 +89,36 @@ export class WhatsAppClient extends EventEmitter {
 
         if (!text) continue;
 
-        // Safety check
+        const jid = sender + "@s.whatsapp.net";
+
+        // Check for pending PIN challenge reply
+        const pending = this.pendingPinChallenges.get(phoneNumber);
+        if (pending) {
+          this.pendingPinChallenges.delete(phoneNumber);
+          if (this.config.pin && text.trim() === this.config.pin) {
+            // PIN correct — forward the original command
+            const parsed: ParsedMessage = parseInbound(pending.text);
+            this.emit("message", { sender: phoneNumber, parsed, raw: pending.text, msgKey: msg.key });
+          } else {
+            this.sendMessage(jid, "Incorrect PIN. Command cancelled.");
+            this.emit("pin_failed", { phoneNumber, text: pending.text });
+          }
+          continue;
+        }
+
+        // Safety check — blocklist
         const safetyResult = this.safety.check(text);
         if (safetyResult.blocked) {
-          this.emit("blocked", {
-            phoneNumber,
-            text,
-            reason: safetyResult.reason,
-          });
-          this.sendMessage(
-            sender + "@s.whatsapp.net",
-            `Command blocked: ${safetyResult.reason}`
-          );
+          this.emit("blocked", { phoneNumber, text, reason: safetyResult.reason });
+          this.sendMessage(jid, `Command blocked: ${safetyResult.reason}`);
+          continue;
+        }
+
+        // Safety check — PIN required for destructive commands
+        if (this.config.pin && this.safety.needsPin(text)) {
+          this.pendingPinChallenges.set(phoneNumber, { text, jid });
+          this.sendMessage(jid, "This command requires your PIN. Reply with PIN:");
+          this.emit("pin_required", { phoneNumber, text });
           continue;
         }
 

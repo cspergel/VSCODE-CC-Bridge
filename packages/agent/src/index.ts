@@ -40,6 +40,36 @@ async function main() {
 
   const ptySessions = new Map<string, PtyWrapper>();
 
+  function getOrCreatePty(sessionId: string, projectPath: string, sessionName: string): PtyWrapper {
+    if (ptySessions.has(sessionId)) return ptySessions.get(sessionId)!;
+    const pty = new PtyWrapper({
+      command: "claude",
+      args: [],
+      cwd: projectPath,
+      autoRestart: true,
+    });
+    pty.on("classified", (line) => router.route(sessionId, sessionName, line));
+    pty.on("exit", (code) => {
+      console.log(`[agent] PTY ${sessionName} exited with code ${code}`);
+      sessionManager.getDatabase().logAudit({
+        event: "pty_exit", source: "agent", detail: `Session ${sessionName} exited with code ${code}`,
+      });
+    });
+    ptySessions.set(sessionId, pty);
+    console.log(`[agent] Spawned PTY for session "${sessionName}" (pid: ${pty.pid})`);
+    return pty;
+  }
+
+  function broadcastSessionCount(): void {
+    const count = sessionManager.listSessions().length;
+    wsServer.sendToBridge(createEnvelope({
+      type: MessageType.Control,
+      source: Source.Agent,
+      sessionId: "",
+      payload: { action: "session_count", count },
+    }));
+  }
+
   console.log(`[agent] Bridge WS on :${config.server.port}, VS Code WS on :${config.server.vscodePort}`);
 
   // Handle inbound commands from bridge (WhatsApp)
@@ -49,10 +79,15 @@ async function main() {
       const session = sessionManager.resolve(sessionId) ?? sessionManager.getActive();
       if (!session) return;
 
-      const ptySession = ptySessions.get(session.id);
-      if (!ptySession) return;
+      const ptySession = getOrCreatePty(session.id, session.projectPath, session.name);
 
       let text = (envelope.payload as any).text as string;
+
+      // Audit log the command
+      sessionManager.getDatabase().logAudit({
+        event: "command", source: (envelope.payload as any).sender ?? "whatsapp",
+        detail: text,
+      });
 
       // Git context injection (auto mode)
       if (config.gitContext.mode === "auto" && clientInfo?.type === "bridge") {
@@ -72,11 +107,38 @@ async function main() {
       if (payload.action === "register") {
         const existing = sessionManager.resolve(payload.name);
         if (!existing) {
-          sessionManager.register(payload.name, payload.projectPath, payload.aliases ?? []);
+          const session = sessionManager.register(payload.name, payload.projectPath, payload.aliases ?? []);
+          getOrCreatePty(session.id, session.projectPath, session.name);
+          broadcastSessionCount();
         }
       }
     }
   });
+
+  // Audit log connection events
+  wsServer.on("bridge_connected", () => {
+    sessionManager.getDatabase().logAudit({ event: "bridge_connected", source: "agent", detail: "Bridge client connected" });
+    broadcastSessionCount();
+  });
+  wsServer.on("vscode_connected", () => {
+    sessionManager.getDatabase().logAudit({ event: "vscode_connected", source: "agent", detail: "VS Code client connected" });
+  });
+
+  // Graceful shutdown
+  function shutdown() {
+    console.log("[agent] Shutting down...");
+    router.destroy();
+    for (const [id, pty] of ptySessions) {
+      pty.kill();
+      ptySessions.delete(id);
+    }
+    wsServer.close();
+    sessionManager.close();
+    process.exit(0);
+  }
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 
   console.log("[agent] Ready. Waiting for connections...");
 }

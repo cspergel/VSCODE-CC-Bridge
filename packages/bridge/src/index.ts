@@ -8,7 +8,7 @@ import { resolve } from "path";
 import { load } from "js-yaml";
 
 interface Config {
-  whatsapp: { allowedNumbers: string[]; sessionPath: string; rateLimit: { maxPerHour: number; burstMax: number } };
+  whatsapp: { allowedNumbers: string[]; sessionPath: string; pin?: string; rateLimit: { maxPerHour: number; burstMax: number } };
   server: { port: number };
 }
 
@@ -29,7 +29,7 @@ async function main() {
 
   // Connect to agent
   let agentWs: WebSocket | null = null;
-  const sessionCount = 1; // Track for multi-session tagging
+  let sessionCount = 1;
 
   function connectToAgent() {
     agentWs = new WebSocket(`ws://127.0.0.1:${config.server.port}`);
@@ -38,25 +38,35 @@ async function main() {
     agentWs.on("error", () => {});
 
     agentWs.on("message", (data) => {
-      const envelope: Envelope = JSON.parse(data.toString());
-      const payload = envelope.payload as any;
-      const classification =
-        envelope.type === MessageType.Decision ? Classification.Decision :
-        envelope.type === MessageType.Error ? Classification.Error :
-        envelope.type === MessageType.Status ? Classification.Status :
-        Classification.Output;
+      try {
+        const envelope: Envelope = JSON.parse(data.toString());
+        const payload = envelope.payload as any;
+        const classification =
+          envelope.type === MessageType.Decision ? Classification.Decision :
+          envelope.type === MessageType.Error ? Classification.Error :
+          envelope.type === MessageType.Status ? Classification.Status :
+          Classification.Output;
 
-      const formatted = formatForWhatsApp({
-        classification,
-        text: payload.text,
-        sessionName: payload.sessionName ?? "default",
-        multiSession: sessionCount > 1,
-        actions: payload.actions,
-      });
+        // Track session count for multi-session tagging
+        if (envelope.type === MessageType.Control && payload.action === "session_count") {
+          sessionCount = payload.count ?? 1;
+          return;
+        }
 
-      // Send to all allowed numbers (single-user)
-      for (const num of config.whatsapp.allowedNumbers) {
-        waClient.sendToNumber(num, formatted);
+        const formatted = formatForWhatsApp({
+          classification,
+          text: payload.text,
+          sessionName: payload.sessionName ?? "default",
+          multiSession: sessionCount > 1,
+          actions: payload.actions,
+        });
+
+        // Send to all allowed numbers (single-user)
+        for (const num of config.whatsapp.allowedNumbers) {
+          waClient.sendToNumber(num, formatted);
+        }
+      } catch {
+        // Ignore malformed messages
       }
     });
   }
@@ -66,6 +76,7 @@ async function main() {
     sessionPath: config.whatsapp.sessionPath,
     allowedNumbers: config.whatsapp.allowedNumbers,
     rateLimit: config.whatsapp.rateLimit,
+    pin: config.whatsapp.pin,
   });
 
   waClient.on("message", ({ sender, parsed, raw }) => {
@@ -81,6 +92,19 @@ async function main() {
 
   waClient.on("connected", () => console.log("[bridge] WhatsApp connected"));
   waClient.on("blocked", ({ text, reason }: { text: string; reason: string }) => console.log(`[bridge] Blocked: ${reason} — ${text}`));
+
+  // Graceful shutdown
+  let shuttingDown = false;
+  function shutdown() {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log("[bridge] Shutting down...");
+    agentWs?.close();
+    process.exit(0);
+  }
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 
   connectToAgent();
   await waClient.connect();

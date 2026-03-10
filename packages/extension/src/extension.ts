@@ -35,6 +35,14 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("claudeBridge.routeHere", () => {
       wsClient!.requestRouteHere();
     }),
+
+    vscode.commands.registerCommand("claudeBridge.acceptAll", () => {
+      wsClient!.sendCommand("y");
+    }),
+
+    vscode.commands.registerCommand("claudeBridge.rejectAll", () => {
+      wsClient!.sendCommand("n");
+    }),
   );
 
   // Status bar

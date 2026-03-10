@@ -77,7 +77,17 @@ export class Database {
     return rows.map((r) => this.rowToSession(r));
   }
 
+  private static readonly ALLOWED_SESSION_COLUMNS = new Set([
+    "aliases", "projectPath", "status", "isWhatsAppActive", "lastActivityAt",
+    "claudeCodePid", "vscodeConnected", "pendingDecision", "metadata",
+  ]);
+
   updateSession(id: string, fields: Partial<Record<string, unknown>>): void {
+    for (const k of Object.keys(fields)) {
+      if (!Database.ALLOWED_SESSION_COLUMNS.has(k)) {
+        throw new Error(`Invalid session column: ${k}`);
+      }
+    }
     const sets = Object.keys(fields).map((k) => `${k} = @${k}`).join(", ");
     this.db.prepare(`UPDATE sessions SET ${sets} WHERE id = @id`).run({ ...fields, id });
   }
