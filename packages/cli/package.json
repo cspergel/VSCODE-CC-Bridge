@@ -1,0 +1,15 @@
+{
+  "name": "@live-bridge/cli",
+  "version": "0.1.0",
+  "bin": { "claude-bridge": "dist/index.js" },
+  "scripts": { "build": "tsc", "test": "vitest run" },
+  "dependencies": {
+    "@live-bridge/shared": "*",
+    "inquirer": "^9.0.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/inquirer": "^9.0.0"
+  }
+}
