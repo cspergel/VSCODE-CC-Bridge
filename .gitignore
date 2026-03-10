@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Coverage
+coverage/
+
+# WhatsApp auth state (Baileys)
+auth_info_baileys/
+
+# SQLite databases
+*.sqlite
+*.sqlite3
+*.db
+
+# PM2
+.pm2/

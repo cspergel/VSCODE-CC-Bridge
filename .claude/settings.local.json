@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_episodic-memory_episodic-memory__search",
+      "Bash(cd \"/c/Users/drcra/Documents/Coding Projects/WhatsApp-Claude-Code-Live-Bridge\" && python3 -c \"\nimport zipfile, xml.etree.ElementTree as ET, sys, re\n\ndef docx_to_text\\(path\\):\n    with zipfile.ZipFile\\(path\\) as z:\n        xml_content = z.read\\('word/document.xml'\\)\n    tree = ET.fromstring\\(xml_content\\)\n    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}\n    paragraphs = []\n    for p in tree.iter\\('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p'\\):\n        texts = []\n        for t in p.iter\\('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t'\\):\n            if t.text:\n                texts.append\\(t.text\\)\n        if texts:\n            paragraphs.append\\(''.join\\(texts\\)\\)\n    return '\\\\n'.join\\(paragraphs\\)\n\nprint\\(docx_to_text\\('docs/Claude-Code-Live-Bridge-Architecture-v1.2.docx'\\)\\)\n\" 2>&1)",
+      "Bash(cd \"/c/Users/drcra/Documents/Coding Projects/WhatsApp-Claude-Code-Live-Bridge\" && python3 -c \"\nimport zipfile, xml.etree.ElementTree as ET, sys, io\nsys.stdout = io.TextIOWrapper\\(sys.stdout.buffer, encoding='utf-8'\\)\n\ndef docx_to_text\\(path\\):\n    with zipfile.ZipFile\\(path\\) as z:\n        xml_content = z.read\\('word/document.xml'\\)\n    tree = ET.fromstring\\(xml_content\\)\n    ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}\n    paragraphs = []\n    for p in tree.iter\\('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p'\\):\n        texts = []\n        for t in p.iter\\('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t'\\):\n            if t.text:\n                texts.append\\(t.text\\)\n        if texts:\n            paragraphs.append\\(''.join\\(texts\\)\\)\n    return '\\\\n'.join\\(paragraphs\\)\n\nprint\\(docx_to_text\\('docs/Claude-Code-Live-Bridge-Architecture-v1.2.docx'\\)\\)\n\" 2>&1)",
+      "Bash(cd \"/c/Users/drcra/Documents/Coding Projects/WhatsApp-Claude-Code-Live-Bridge\" && git init 2>&1)",
+      "Bash(cd \"C:/Users/drcra/Documents/Coding Projects/WhatsApp-Claude-Code-Live-Bridge\" && npm install 2>&1)",
+      "Bash(cd:*)",
+      "Bash(cd \"C:/Users/drcra/Documents/Coding Projects/WhatsApp-Claude-Code-Live-Bridge\" && npm ls --depth=0 2>&1)"
+    ]
+  }
+}

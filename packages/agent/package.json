@@ -1,0 +1,26 @@
+{
+  "name": "@live-bridge/agent",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@live-bridge/shared": "*",
+    "node-pty": "^1.0.0",
+    "better-sqlite3": "^11.0.0",
+    "ws": "^8.18.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "tsx": "^4.0.0",
+    "vitest": "^3.0.0",
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/ws": "^8.5.0",
+    "@types/js-yaml": "^4.0.0"
+  }
+}
