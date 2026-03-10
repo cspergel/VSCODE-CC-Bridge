@@ -9,6 +9,7 @@ export interface PtyOptions {
   args?: string[];
   cwd: string;
   env?: Record<string, string>;
+  autoRestart?: boolean;
 }
 
 export interface ClassifiedLine {
@@ -19,7 +20,7 @@ export interface ClassifiedLine {
 }
 
 export class PtyWrapper extends EventEmitter {
-  private process: pty.IPty;
+  private process!: pty.IPty;
   private lineBuffer: LineBuffer;
   private rawBuffer: string[] = [];
 
@@ -38,6 +39,10 @@ export class PtyWrapper extends EventEmitter {
       this.emit("classified", classified);
     });
 
+    this.spawn(opts);
+  }
+
+  private spawn(opts: PtyOptions): void {
     this.process = pty.spawn(opts.command, opts.args ?? [], {
       name: "xterm-256color",
       cwd: opts.cwd,
@@ -55,7 +60,19 @@ export class PtyWrapper extends EventEmitter {
     this.process.onExit(({ exitCode }) => {
       this.lineBuffer.flush();
       this.emit("exit", exitCode);
+
+      // Auto-restart on non-zero exit
+      if (opts.autoRestart && exitCode !== 0) {
+        console.log(`[pty] Process exited with ${exitCode}, restarting in 2s...`);
+        setTimeout(() => this.respawn(opts), 2000);
+      }
     });
+  }
+
+  private respawn(opts: PtyOptions): void {
+    this.rawBuffer = [];
+    this.spawn(opts);
+    this.emit("restarted");
   }
 
   write(text: string): void {

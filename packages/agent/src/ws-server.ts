@@ -22,14 +22,20 @@ export class AgentWSServer extends EventEmitter {
     this.bridgeWss.on("connection", (ws) => {
       this.clients.set(ws, { ws, type: "bridge" });
       ws.on("message", (data) => this.handleMessage(ws, data.toString()));
-      ws.on("close", () => this.clients.delete(ws));
+      const heartbeat = setInterval(() => ws.ping(), 30_000);
+      ws.on("close", () => {
+        clearInterval(heartbeat);
+        this.clients.delete(ws);
+      });
       this.emit("bridge_connected");
     });
 
     this.vscodeWss.on("connection", (ws) => {
       this.clients.set(ws, { ws, type: "vscode" });
       ws.on("message", (data) => this.handleMessage(ws, data.toString()));
+      const heartbeat = setInterval(() => ws.ping(), 30_000);
       ws.on("close", () => {
+        clearInterval(heartbeat);
         const info = this.clients.get(ws);
         if (info?.sessionId) this.emit("vscode_disconnected", info.sessionId);
         this.clients.delete(ws);
