@@ -104,6 +104,25 @@ describe("PtyWrapper", () => {
     });
   });
 
+  it("auto-restarts on non-zero exit", async () => {
+    const pty = new PtyWrapper({
+      command: process.platform === "win32" ? "cmd.exe" : "bash",
+      args: process.platform === "win32" ? ["/c", "exit 1"] : ["-c", "exit 1"],
+      cwd: process.cwd(),
+      autoRestart: true,
+    });
+
+    const restarted = await new Promise<boolean>((resolve) => {
+      pty.on("restarted", () => {
+        pty.kill();
+        resolve(true);
+      });
+      setTimeout(() => resolve(false), 5000);
+    });
+
+    expect(restarted).toBe(true);
+  });
+
   it("classified lines have correct structure", async () => {
     const pty = new PtyWrapper({
       command: process.platform === "win32" ? "cmd.exe" : "echo",

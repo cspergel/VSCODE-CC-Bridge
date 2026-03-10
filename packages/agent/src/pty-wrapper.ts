@@ -23,6 +23,8 @@ export class PtyWrapper extends EventEmitter {
   private process!: pty.IPty;
   private lineBuffer: LineBuffer;
   private rawBuffer: string[] = [];
+  private restartCount = 0;
+  private static readonly MAX_RESTARTS = 5;
 
   constructor(opts: PtyOptions) {
     super();
@@ -61,9 +63,10 @@ export class PtyWrapper extends EventEmitter {
       this.lineBuffer.flush();
       this.emit("exit", exitCode);
 
-      // Auto-restart on non-zero exit
-      if (opts.autoRestart && exitCode !== 0) {
-        console.log(`[pty] Process exited with ${exitCode}, restarting in 2s...`);
+      // Auto-restart on non-zero exit (with limit)
+      if (opts.autoRestart && exitCode !== 0 && this.restartCount < PtyWrapper.MAX_RESTARTS) {
+        this.restartCount++;
+        console.log(`[pty] Restart ${this.restartCount}/${PtyWrapper.MAX_RESTARTS} in 2s...`);
         setTimeout(() => this.respawn(opts), 2000);
       }
     });

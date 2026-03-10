@@ -20,6 +20,8 @@ export class WhatsAppClient extends EventEmitter {
   private auth: AuthGuard;
   private safety: SafetyFilter;
   private config: BaileysConfig;
+  private reconnectDelay = 3000;
+  private static readonly MAX_RECONNECT_DELAY = 60_000;
 
   constructor(config: BaileysConfig) {
     super();
@@ -48,11 +50,13 @@ export class WhatsAppClient extends EventEmitter {
       if (connection === "close") {
         const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
         if (reason !== DisconnectReason.loggedOut) {
-          // Auto-reconnect
-          setTimeout(() => this.connect(), 3000);
+          console.log(`[baileys] Reconnecting in ${this.reconnectDelay / 1000}s...`);
+          setTimeout(() => this.connect(), this.reconnectDelay);
+          this.reconnectDelay = Math.min(this.reconnectDelay * 2, WhatsAppClient.MAX_RECONNECT_DELAY);
         }
         this.emit("disconnected", reason);
       } else if (connection === "open") {
+        this.reconnectDelay = 3000;
         this.emit("connected");
       }
     });

@@ -3,7 +3,7 @@ import { SessionManager } from "../session-manager";
 import { classify } from "../classifier";
 import { collectGitContext, formatContextHeader } from "../git-context";
 import { Classification } from "@live-bridge/shared";
-import { parseInbound, MessageIntent } from "../../../../packages/bridge/src/parser";
+import { parseInbound, MessageIntent } from "@live-bridge/bridge/src/parser";
 
 describe("End-to-end integration", () => {
   let mgr: SessionManager;
