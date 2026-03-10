@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SafetyFilter } from "../safety";
+import { SafetyFilter } from "../safety.js";
 
 describe("SafetyFilter", () => {
   const filter = new SafetyFilter();

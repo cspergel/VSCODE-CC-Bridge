@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatForWhatsApp, FormatInput } from "../formatter";
+import { formatForWhatsApp, FormatInput } from "../formatter.js";
 import { Classification } from "@live-bridge/shared";
 
 describe("WhatsApp Formatter", () => {

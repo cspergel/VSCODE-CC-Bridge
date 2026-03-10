@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseInbound, ParsedMessage, MessageIntent } from "../parser";
+import { parseInbound, ParsedMessage, MessageIntent } from "../parser.js";
 
 describe("WhatsApp Message Parser", () => {
   it("parses plain text as command to active session", () => {

@@ -1,0 +1,121 @@
+import makeWASocket, {
+  DisconnectReason,
+  useMultiFileAuthState,
+  type WASocket,
+} from "@whiskeysockets/baileys";
+import { Boom } from "@hapi/boom";
+import { EventEmitter } from "events";
+import { AuthGuard } from "./auth.js";
+import { SafetyFilter } from "./safety.js";
+import { parseInbound, type ParsedMessage } from "./parser.js";
+
+export interface BaileysConfig {
+  sessionPath: string;
+  allowedNumbers: string[];
+  rateLimit: { maxPerHour: number; burstMax: number };
+}
+
+export class WhatsAppClient extends EventEmitter {
+  private sock: WASocket | null = null;
+  private auth: AuthGuard;
+  private safety: SafetyFilter;
+  private config: BaileysConfig;
+
+  constructor(config: BaileysConfig) {
+    super();
+    this.config = config;
+    this.auth = new AuthGuard({
+      allowedNumbers: config.allowedNumbers,
+      rateLimit: config.rateLimit,
+    });
+    this.safety = new SafetyFilter();
+  }
+
+  async connect(): Promise<void> {
+    const { state, saveCreds } = await useMultiFileAuthState(
+      this.config.sessionPath
+    );
+
+    this.sock = makeWASocket({
+      auth: state,
+      printQRInTerminal: true,
+    });
+
+    this.sock.ev.on("creds.update", saveCreds);
+
+    this.sock.ev.on("connection.update", (update) => {
+      const { connection, lastDisconnect } = update;
+      if (connection === "close") {
+        const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
+        if (reason !== DisconnectReason.loggedOut) {
+          // Auto-reconnect
+          setTimeout(() => this.connect(), 3000);
+        }
+        this.emit("disconnected", reason);
+      } else if (connection === "open") {
+        this.emit("connected");
+      }
+    });
+
+    this.sock.ev.on("messages.upsert", ({ messages }) => {
+      for (const msg of messages) {
+        if (!msg.message || msg.key.fromMe) continue;
+
+        const sender =
+          msg.key.remoteJid?.replace(/@s\.whatsapp\.net$/, "") ?? "";
+        const phoneNumber = "+" + sender;
+
+        // Auth check
+        if (!this.auth.isAllowed(phoneNumber)) {
+          this.emit("auth_failure", phoneNumber);
+          continue;
+        }
+
+        if (!this.auth.checkRateLimit(phoneNumber)) {
+          this.emit("rate_limited", phoneNumber);
+          continue;
+        }
+
+        const text =
+          msg.message.conversation ??
+          msg.message.extendedTextMessage?.text ??
+          "";
+
+        if (!text) continue;
+
+        // Safety check
+        const safetyResult = this.safety.check(text);
+        if (safetyResult.blocked) {
+          this.emit("blocked", {
+            phoneNumber,
+            text,
+            reason: safetyResult.reason,
+          });
+          this.sendMessage(
+            sender + "@s.whatsapp.net",
+            `Command blocked: ${safetyResult.reason}`
+          );
+          continue;
+        }
+
+        const parsed: ParsedMessage = parseInbound(text);
+        this.emit("message", {
+          sender: phoneNumber,
+          parsed,
+          raw: text,
+          msgKey: msg.key,
+        });
+      }
+    });
+  }
+
+  async sendMessage(jid: string, text: string): Promise<void> {
+    if (!this.sock) return;
+    await this.sock.sendMessage(jid, { text });
+  }
+
+  async sendToNumber(phoneNumber: string, text: string): Promise<void> {
+    const jid = phoneNumber.replace("+", "") + "@s.whatsapp.net";
+    await this.sendMessage(jid, text);
+  }
+}

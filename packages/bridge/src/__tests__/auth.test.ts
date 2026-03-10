@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { AuthGuard } from "../auth";
+import { AuthGuard } from "../auth.js";
 
 describe("AuthGuard", () => {
   let guard: AuthGuard;
