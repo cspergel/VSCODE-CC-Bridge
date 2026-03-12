@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Bridge Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+</head>
+<body>
+  <header>
+    <h1>Claude Bridge</h1>
+    <div class="health">
+      <span class="dot" id="dot-agent" title="Agent"></span> Agent
+      <span class="dot" id="dot-bridge" title="Bridge"></span> Bridge
+      <button class="btn-relink" id="btnRelink" title="Re-link WhatsApp (new QR code)">&#x1F4F1;</button>
+      <button class="btn-restart" id="btnRestartDashboard" title="Rebuild &amp; restart dashboard">&#x21bb;</button>
+    </div>
+  </header>
+
+  <div class="services">
+    <div class="card" id="card-agent">
+      <div class="card-header">
+        <h2>Agent</h2>
+        <span class="status-badge" id="status-agent">stopped</span>
+      </div>
+      <div class="card-info">
+        <span id="pid-agent"></span>
+        <span id="uptime-agent"></span>
+      </div>
+      <div class="card-actions">
+        <button onclick="serviceAction('agent','start')">Start</button>
+        <button onclick="serviceAction('agent','stop')">Stop</button>
+        <button onclick="serviceAction('agent','restart')">Restart</button>
+      </div>
+    </div>
+
+    <div class="card" id="card-bridge">
+      <div class="card-header">
+        <h2>Bridge</h2>
+        <span class="status-badge" id="status-bridge">stopped</span>
+      </div>
+      <div class="card-info">
+        <span id="pid-bridge"></span>
+        <span id="uptime-bridge"></span>
+      </div>
+      <div class="card-actions">
+        <button onclick="serviceAction('bridge','start')">Start</button>
+        <button onclick="serviceAction('bridge','stop')">Stop</button>
+        <button onclick="serviceAction('bridge','restart')">Restart</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="terminal">Terminal</button>
+    <button class="tab" data-tab="logs">Logs</button>
+    <button class="tab" data-tab="sessions">Sessions</button>
+    <button class="tab" data-tab="messages">Messages</button>
+    <button class="tab" data-tab="audit">Audit</button>
+  </div>
+
+  <div class="tab-content" id="tab-terminal" style="display:block">
+    <div class="session-tab-bar" id="sessionTabBar">
+      <button class="session-tab-add" id="btnNewSession" title="New session">+</button>
+    </div>
+    <div id="terminalContainer"></div>
+  </div>
+
+  <!-- New Session Modal -->
+  <div class="modal" id="newSessionModal">
+    <div class="modal-content modal-content-wide">
+      <h3>New Session</h3>
+
+      <!-- Recent paths -->
+      <div class="recent-paths" id="recentPaths" style="display:none">
+        <label>Recent</label>
+        <div class="recent-chips" id="recentChips"></div>
+      </div>
+
+      <!-- Folder browser -->
+      <label>Browse to project folder</label>
+      <div class="folder-browser">
+        <div class="browser-breadcrumbs" id="browserBreadcrumbs"></div>
+        <div class="browser-list" id="browserList">
+          <div class="browser-loading">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Selected path -->
+      <div class="selected-path" id="selectedPathBar" style="display:none">
+        <span class="selected-path-text" id="selectedPathText"></span>
+        <span class="git-badge" id="selectedGitBadge" style="display:none">git</span>
+      </div>
+
+      <!-- Manual path toggle -->
+      <a href="#" class="btn-link" id="btnManualToggle">or type a path manually</a>
+      <div class="manual-path-input" id="manualPathWrap" style="display:none">
+        <input type="text" id="modalSessionPath" placeholder="e.g. C:\Projects\my-project">
+      </div>
+
+      <!-- Session name -->
+      <label for="modalSessionName">Session Name</label>
+      <input type="text" id="modalSessionName" placeholder="auto-filled from folder name">
+
+      <div class="modal-actions">
+        <button id="btnModalCancel">Cancel</button>
+        <button class="btn-primary" id="btnModalCreate">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-logs" style="display:none">
+    <div class="log-toolbar">
+      <label><input type="radio" name="logFilter" value="all" checked> All</label>
+      <label><input type="radio" name="logFilter" value="agent"> Agent</label>
+      <label><input type="radio" name="logFilter" value="bridge"> Bridge</label>
+      <label class="auto-scroll-label">
+        <input type="checkbox" id="autoScroll" checked> Auto-scroll
+      </label>
+      <button onclick="clearLogs()">Clear</button>
+    </div>
+    <div class="log-viewer" id="logViewer"></div>
+  </div>
+
+  <div class="tab-content" id="tab-sessions" style="display:none">
+    <button onclick="loadSessions()">Refresh</button>
+    <table id="sessionsTable">
+      <thead>
+        <tr><th>Name</th><th>Status</th><th>Project</th><th>Last Activity</th><th>Actions</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="tab-content" id="tab-messages" style="display:none">
+    <div class="msg-controls">
+      <select id="msgSessionSelect"><option value="">Select session...</option></select>
+      <button onclick="loadMessages()">Load</button>
+    </div>
+    <table id="messagesTable">
+      <thead>
+        <tr><th>#</th><th>Time</th><th>Source</th><th>Type</th><th>Content</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="tab-content" id="tab-audit" style="display:none">
+    <button onclick="loadAudit()">Refresh</button>
+    <table id="auditTable">
+      <thead>
+        <tr><th>Time</th><th>Event</th><th>Source</th><th>Detail</th><th>Blocked</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

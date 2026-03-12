@@ -11,7 +11,6 @@ export enum MessageType {
 
 export enum Source {
   WhatsApp = "whatsapp",
-  VSCode = "vscode",
   Agent = "agent",
   ClaudeCode = "claude-code",
 }
@@ -34,7 +33,6 @@ export enum Classification {
 
 export const DEFAULTS = {
   WS_PORT_BRIDGE: 9377,
-  WS_PORT_VSCODE: 9378,
   STATUS_BATCH_INTERVAL_S: 10,
   WAIT_TIMEOUT_MS: 500,
   MAX_WA_MESSAGE_LENGTH: 1500,

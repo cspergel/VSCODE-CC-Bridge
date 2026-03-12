@@ -1,13 +1,14 @@
 {
   "name": "claude-code-live-bridge",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": ["packages/shared", "packages/agent", "packages/bridge", "packages/dashboard", "packages/cli"],
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces --if-present",
     "start": "pm2 start ecosystem.config.cjs",
     "stop": "pm2 stop ecosystem.config.cjs",
     "dev:agent": "npm run dev --workspace=packages/agent",
-    "dev:bridge": "npm run dev --workspace=packages/bridge"
+    "dev:bridge": "npm run dev --workspace=packages/bridge",
+    "dashboard": "npm run start --workspace=packages/dashboard"
   }
 }

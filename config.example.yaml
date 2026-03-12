@@ -1,7 +1,6 @@
 server:
   port: 9377
   host: 127.0.0.1
-  vscodePort: 9378
 
 whatsapp:
   allowedNumbers:

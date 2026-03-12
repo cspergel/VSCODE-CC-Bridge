@@ -48,7 +48,10 @@ export class PtyWrapper extends EventEmitter {
     this.process = pty.spawn(opts.command, opts.args ?? [], {
       name: "xterm-256color",
       cwd: opts.cwd,
-      env: { ...process.env, ...opts.env } as Record<string, string>,
+      env: (() => {
+        const { CLAUDECODE, ...clean } = process.env;
+        return { ...clean, ...opts.env };
+      })() as Record<string, string>,
       cols: 120,
       rows: 40,
     });

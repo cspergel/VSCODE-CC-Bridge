@@ -37,7 +37,7 @@ async function main() {
     agentWs.on("close", () => { setTimeout(connectToAgent, 3000); });
     agentWs.on("error", () => {});
 
-    agentWs.on("message", (data) => {
+    agentWs.on("message", async (data) => {
       try {
         const envelope: Envelope = JSON.parse(data.toString());
         const payload = envelope.payload as any;
@@ -61,12 +61,18 @@ async function main() {
           actions: payload.actions,
         });
 
+        console.log(`[bridge] → WhatsApp (${classification}): ${formatted.slice(0, 80)}${formatted.length > 80 ? "..." : ""}`);
+
         // Send to all allowed numbers (single-user)
         for (const num of config.whatsapp.allowedNumbers) {
-          waClient.sendToNumber(num, formatted);
+          try {
+            await waClient.sendToNumber(num, formatted);
+          } catch (err) {
+            console.error(`[bridge] Failed to send to ${num}:`, err);
+          }
         }
-      } catch {
-        // Ignore malformed messages
+      } catch (err) {
+        console.error("[bridge] Error processing agent message:", err);
       }
     });
   }
@@ -85,7 +91,7 @@ async function main() {
         type: MessageType.Command,
         source: Source.WhatsApp,
         sessionId: parsed.targetSession ?? "",
-        payload: { text: parsed.text, intent: parsed.intent, sender, raw },
+        payload: { text: parsed.text, intent: parsed.intent, specialCommand: parsed.specialCommand, targetSession: parsed.targetSession, sender, raw },
       })));
     }
   });

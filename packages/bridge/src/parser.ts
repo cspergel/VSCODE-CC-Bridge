@@ -3,6 +3,7 @@ export enum MessageIntent {
   TargetedCommand = "targeted_command",
   Switch = "switch",
   ListSessions = "list_sessions",
+  NewSession = "new_session",
   Broadcast = "broadcast",
   DecisionReply = "decision_reply",
   Special = "special",
@@ -45,6 +46,13 @@ export function parseInbound(raw: string): ParsedMessage {
 
     if (cmd === "switch") {
       return { intent: MessageIntent.Switch, text: "", targetSession: rest, actionIndex: null, specialCommand: null };
+    }
+
+    if (cmd === "new") {
+      // /new <name> <path> — create a new session
+      const name = parts[1] || "";
+      const path = parts.slice(2).join(" ") || "";
+      return { intent: MessageIntent.NewSession, text: `${name}|${path}`, targetSession: null, actionIndex: null, specialCommand: null };
     }
 
     if (cmd === "all") {

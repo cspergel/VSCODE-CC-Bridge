@@ -2,25 +2,17 @@ import { WebSocketServer, WebSocket } from "ws";
 import { EventEmitter } from "events";
 import { Envelope, createEnvelope, MessageType, Source } from "@live-bridge/shared";
 
-interface ClientInfo {
-  ws: WebSocket;
-  type: "bridge" | "vscode";
-  sessionId?: string;
-}
-
 export class AgentWSServer extends EventEmitter {
-  private bridgeWss: WebSocketServer;
-  private vscodeWss: WebSocketServer;
-  private clients = new Map<WebSocket, ClientInfo>();
+  private wss: WebSocketServer;
+  private clients = new Set<WebSocket>();
 
-  constructor(bridgePort: number, vscodePort: number) {
+  constructor(port: number) {
     super();
 
-    this.bridgeWss = new WebSocketServer({ port: bridgePort });
-    this.vscodeWss = new WebSocketServer({ port: vscodePort });
+    this.wss = new WebSocketServer({ port });
 
-    this.bridgeWss.on("connection", (ws) => {
-      this.clients.set(ws, { ws, type: "bridge" });
+    this.wss.on("connection", (ws) => {
+      this.clients.add(ws);
       ws.on("message", (data) => this.handleMessage(ws, data.toString()));
       const heartbeat = setInterval(() => ws.ping(), 30_000);
       ws.on("close", () => {
@@ -29,29 +21,12 @@ export class AgentWSServer extends EventEmitter {
       });
       this.emit("bridge_connected");
     });
-
-    this.vscodeWss.on("connection", (ws) => {
-      this.clients.set(ws, { ws, type: "vscode" });
-      ws.on("message", (data) => this.handleMessage(ws, data.toString()));
-      const heartbeat = setInterval(() => ws.ping(), 30_000);
-      ws.on("close", () => {
-        clearInterval(heartbeat);
-        const info = this.clients.get(ws);
-        if (info?.sessionId) this.emit("vscode_disconnected", info.sessionId);
-        this.clients.delete(ws);
-      });
-      this.emit("vscode_connected");
-    });
   }
 
   private handleMessage(ws: WebSocket, raw: string): void {
     try {
       const envelope: Envelope = JSON.parse(raw);
-      const info = this.clients.get(ws);
-      if (info && envelope.type === MessageType.Control && (envelope.payload as any).action === "register") {
-        info.sessionId = envelope.sessionId;
-      }
-      this.emit("envelope", envelope, info);
+      this.emit("envelope", envelope);
     } catch {
       // Ignore malformed messages
     }
@@ -59,33 +34,14 @@ export class AgentWSServer extends EventEmitter {
 
   sendToBridge(envelope: Envelope): void {
     const json = JSON.stringify(envelope);
-    for (const [, info] of this.clients) {
-      if (info.type === "bridge" && info.ws.readyState === WebSocket.OPEN) {
-        info.ws.send(json);
-      }
-    }
-  }
-
-  sendToVSCode(sessionId: string, envelope: Envelope): void {
-    const json = JSON.stringify(envelope);
-    for (const [, info] of this.clients) {
-      if (info.type === "vscode" && info.sessionId === sessionId && info.ws.readyState === WebSocket.OPEN) {
-        info.ws.send(json);
-      }
-    }
-  }
-
-  broadcastToVSCode(envelope: Envelope): void {
-    const json = JSON.stringify(envelope);
-    for (const [, info] of this.clients) {
-      if (info.type === "vscode" && info.ws.readyState === WebSocket.OPEN) {
-        info.ws.send(json);
+    for (const ws of this.clients) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(json);
       }
     }
   }
 
   close(): void {
-    this.bridgeWss.close();
-    this.vscodeWss.close();
+    this.wss.close();
   }
 }

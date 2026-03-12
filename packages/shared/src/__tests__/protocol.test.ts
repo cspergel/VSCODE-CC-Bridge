@@ -19,8 +19,8 @@ describe("protocol", () => {
   });
 
   it("increments seq across calls", () => {
-    const a = createEnvelope({ type: MessageType.Command, source: Source.VSCode, sessionId: "s", payload: {} });
-    const b = createEnvelope({ type: MessageType.Command, source: Source.VSCode, sessionId: "s", payload: {} });
+    const a = createEnvelope({ type: MessageType.Command, source: Source.WhatsApp, sessionId: "s", payload: {} });
+    const b = createEnvelope({ type: MessageType.Command, source: Source.WhatsApp, sessionId: "s", payload: {} });
     expect(b.seq).toBe(a.seq + 1);
   });
 });

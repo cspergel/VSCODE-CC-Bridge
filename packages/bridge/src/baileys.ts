@@ -50,7 +50,18 @@ export class WhatsAppClient extends EventEmitter {
       auth: state,
       browser: ["Claude Bridge", "Chrome", "145.0.0"],
       version: [2, 3000, 1033893291],
-      logger: { level: "warn", info: () => {}, debug: () => {}, warn: console.warn, error: console.error, trace: () => {}, child: function() { return this; } } as any,
+      logger: {
+        level: "error",
+        info: () => {}, debug: () => {}, trace: () => {},
+        warn: (...args: unknown[]) => {
+          // Suppress Baileys crypto session dumps
+          const first = String(args[0] ?? "");
+          if (first.includes("session") || first.includes("Session") || typeof args[0] === "object") return;
+          console.warn(...args);
+        },
+        error: console.error,
+        child: function() { return this; },
+      } as any,
     });
     this.sock = sock;
 
@@ -191,9 +202,9 @@ export class WhatsAppClient extends EventEmitter {
   }
 
   async sendToNumber(phoneNumber: string, text: string): Promise<void> {
-    // Use cached LID JID if available, fall back to traditional format
-    const jid = this.phoneToJid.get(phoneNumber)
-      ?? phoneNumber.replace("+", "") + "@s.whatsapp.net";
+    // Always use @s.whatsapp.net — LID JIDs cause "waiting for this message"
+    const jid = phoneNumber.replace("+", "") + "@s.whatsapp.net";
+    console.log(`[baileys] Sending to: ${jid}`);
     await this.sendMessage(jid, text);
   }
 }

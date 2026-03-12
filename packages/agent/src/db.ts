@@ -22,7 +22,6 @@ export class Database {
         createdAt TEXT DEFAULT (datetime('now')),
         lastActivityAt TEXT DEFAULT (datetime('now')),
         claudeCodePid INTEGER,
-        vscodeConnected INTEGER DEFAULT 0,
         pendingDecision INTEGER DEFAULT 0,
         metadata TEXT DEFAULT '{}'
       );
@@ -37,7 +36,7 @@ export class Database {
         rawContent TEXT NOT NULL,
         formattedContent TEXT NOT NULL,
         whatsappFormatted TEXT,
-        delivered TEXT DEFAULT '{"whatsapp":false,"vscode":false}'
+        delivered TEXT DEFAULT '{"whatsapp":false}'
       );
 
       CREATE TABLE IF NOT EXISTS audit_log (
@@ -79,8 +78,15 @@ export class Database {
 
   private static readonly ALLOWED_SESSION_COLUMNS = new Set([
     "aliases", "projectPath", "status", "isWhatsAppActive", "lastActivityAt",
-    "claudeCodePid", "vscodeConnected", "pendingDecision", "metadata",
+    "claudeCodePid", "pendingDecision", "metadata",
   ]);
+
+  deleteSession(id: string): boolean {
+    // Delete messages first (FK constraint)
+    this.db.prepare("DELETE FROM messages WHERE sessionId = ?").run(id);
+    const result = this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
 
   updateSession(id: string, fields: Partial<Record<string, unknown>>): void {
     for (const k of Object.keys(fields)) {
@@ -136,7 +142,6 @@ export class Database {
       ...row,
       aliases: JSON.parse(row.aliases),
       isWhatsAppActive: !!row.isWhatsAppActive,
-      vscodeConnected: !!row.vscodeConnected,
       pendingDecision: !!row.pendingDecision,
       metadata: JSON.parse(row.metadata),
     };

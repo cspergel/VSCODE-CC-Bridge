@@ -18,7 +18,7 @@ async function setup() {
   ]);
 
   const config = {
-    server: { port: 9377, host: "127.0.0.1", vscodePort: 9378 },
+    server: { port: 9377, host: "127.0.0.1" },
     whatsapp: {
       allowedNumbers: [answers.phone],
       sessionPath: resolve(configDir, "wa-session"),

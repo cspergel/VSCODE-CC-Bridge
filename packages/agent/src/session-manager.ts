@@ -26,6 +26,10 @@ export class SessionManager {
   }
 
   resolve(nameOrAlias: string): Session | null {
+    // Exact match on ID
+    const byId = this.db.getSession(nameOrAlias);
+    if (byId) return byId;
+
     // Exact match on name
     const exact = this.db.getSessionByName(nameOrAlias);
     if (exact) return exact;

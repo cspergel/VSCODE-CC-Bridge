@@ -10,7 +10,6 @@ export interface Session {
   createdAt: string;
   lastActivityAt: string;
   claudeCodePid: number | null;
-  vscodeConnected: boolean;
   pendingDecision: boolean;
   metadata: Record<string, unknown>;
 }
@@ -25,7 +24,7 @@ export interface Message {
   rawContent: string;
   formattedContent: string;
   whatsappFormatted: string | null;
-  delivered: { whatsapp: boolean; vscode: boolean };
+  delivered: { whatsapp: boolean };
 }
 
 export interface AuditEntry {
