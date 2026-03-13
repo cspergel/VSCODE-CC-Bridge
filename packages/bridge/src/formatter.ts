@@ -20,9 +20,19 @@ export function formatForWhatsApp(input: FormatInput): string {
 
   // Classification-specific formatting
   switch (input.classification) {
-    case Classification.Status:
-      lines.push(`📡 ${input.text}`);
+    case Classification.Status: {
+      // Use context-specific emoji based on status text
+      let emoji = "📡";
+      const t = input.text;
+      if (/^Thinking/i.test(t)) emoji = "🤔";
+      else if (/^Reading/i.test(t)) emoji = "📖";
+      else if (/^Editing/i.test(t)) emoji = "✏️";
+      else if (/^Writing/i.test(t)) emoji = "📝";
+      else if (/^Searching/i.test(t)) emoji = "🔍";
+      else if (/^Running/i.test(t) || /^Using/i.test(t)) emoji = "⚡";
+      lines.push(`${emoji} ${input.text}`);
       break;
+    }
 
     case Classification.Decision:
       lines.push(`⚠️ DECISION REQUIRED`);
