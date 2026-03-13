@@ -25,6 +25,16 @@ const ECHOED_CMD_RE = /^>\s*\[ctx:/; // our git context injection echo
 const WELCOME_RE = /^(Claude Code v\d|Tips for getting|Welcome back|Recent activity|No recent activity|Opus \d|Claude \d|Sonnet \d|Haiku \d|Organization$)/i;
 const UI_CHROME_RE = /^(\? for shortcuts|\/ide for |esc to (interrupt|cancel)|tab to amend|ctrl\+o)/i;
 
+// Tool classification
+const SAFE_TOOLS = new Set(["Read", "Glob", "Grep", "WebFetch", "WebSearch", "Task", "Edit", "Write", "NotebookEdit"]);
+// Bash is risky — it runs arbitrary shell commands
+const RISKY_TOOLS = new Set(["Bash"]);
+// All known tools — for detecting tool-use lines
+const ALL_TOOLS = new Set([...SAFE_TOOLS, ...RISKY_TOOLS]);
+
+const TOOL_LINE_RE = /^(Read|Edit|Write|Bash|Glob|Grep|WebFetch|WebSearch|NotebookEdit|Task)\b/;
+const PERMISSION_RE = /^Allow\b.*\btool\b/i;
+
 /** Detect lines that are purely spinner/thinking noise */
 function isThinkingNoise(text: string): boolean {
   const t = text.trim();
@@ -101,6 +111,7 @@ function classifyContent(text: string): Classification {
 export class ClaudeStateMachine {
   private _state: ClaudeState = ClaudeState.INITIALIZING;
   private thinkingNotified = false;
+  pendingTool: { name: string; description: string } | null = null;
 
   constructor(
     private onClassified: (line: ClassifiedLine) => void,
@@ -115,6 +126,7 @@ export class ClaudeStateMachine {
   reset(): void {
     this._state = ClaudeState.INITIALIZING;
     this.thinkingNotified = false;
+    this.pendingTool = null;
   }
 
   processLine(line: string): void {
@@ -189,6 +201,13 @@ export class ClaudeStateMachine {
       this.thinkingNotified = true;
       this.emit("Thinking...", Classification.Status);
     }
+    // Check for tool use entry (e.g., "Read src/app.ts", "Bash npm install")
+    const toolMatch = text.match(TOOL_LINE_RE);
+    if (toolMatch) {
+      this.pendingTool = { name: toolMatch[1], description: text };
+      this.transition(ClaudeState.TOOL_USE);
+      return;
+    }
     if (looksLikeContent(text)) {
       this.transition(ClaudeState.RESPONDING);
       this.emit(text, classifyContent(text));
@@ -198,16 +217,47 @@ export class ClaudeStateMachine {
   }
 
   private handleToolUse(text: string): void {
-    // Placeholder — Task 2 adds full tool handling
     if (isPrompt(text)) {
+      this.pendingTool = null;
       this.transition(ClaudeState.IDLE);
       return;
     }
+    // Check for permission prompt (e.g., "Allow Read tool?")
+    if (PERMISSION_RE.test(text) && this.pendingTool) {
+      const toolName = this.pendingTool.name;
+      if (RISKY_TOOLS.has(toolName)) {
+        // Escalate to WhatsApp as a decision
+        this.emit(
+          `Allow ${toolName} tool?\n\n${this.pendingTool.description}\n\n\u{1F44D} = Allow  |  \u{1F44E} = Deny\nOr reply: y / n`,
+          Classification.Decision,
+        );
+        // Stay in TOOL_USE — waiting for user response via PTY write
+      } else {
+        // Auto-approve safe tools
+        this.writeToPty("y\r");
+        const statusVerb = toolName === "Read" ? "Reading" :
+          toolName === "Edit" ? "Editing" :
+          toolName === "Write" ? "Writing" :
+          toolName === "Glob" ? "Searching files" :
+          toolName === "Grep" ? "Searching content" :
+          `Using ${toolName}`;
+        this.emit(`${statusVerb}: ${this.pendingTool.description.replace(/^\w+\s*/, "")}`, Classification.Status);
+        this.transition(ClaudeState.THINKING);
+      }
+      this.pendingTool = null;
+      return;
+    }
+    // Collect more tool context lines (e.g., file contents, parameters)
+    if (this.pendingTool && !looksLikeThinking(text) && !isUiChrome(text)) {
+      this.pendingTool.description += "\n" + text;
+    }
     if (looksLikeThinking(text)) {
+      this.pendingTool = null;
       this.transition(ClaudeState.THINKING);
       return;
     }
-    if (looksLikeContent(text)) {
+    if (looksLikeContent(text) && !PERMISSION_RE.test(text)) {
+      this.pendingTool = null;
       this.transition(ClaudeState.RESPONDING);
       this.emit(text, classifyContent(text));
     }

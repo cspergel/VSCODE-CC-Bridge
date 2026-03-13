@@ -129,4 +129,52 @@ describe("ClaudeStateMachine", () => {
       expect(decisions).toHaveLength(0);
     });
   });
+
+  describe("TOOL_USE state", () => {
+    it("detects tool permission and auto-approves safe tools", () => {
+      const { sm, emitted, writes } = createMachine();
+      sm.processLine(">"); // → IDLE
+      sm.processLine("Forming…"); // → THINKING
+      sm.processLine("Read src/app.ts"); // → TOOL_USE
+      sm.processLine("Allow Read tool?");
+      // Should auto-approve by writing to PTY
+      expect(writes).toContain("y\r");
+      // Should emit status
+      const statuses = emitted.filter(e => e.classification === Classification.Status);
+      expect(statuses.some(s => s.text.includes("Reading"))).toBe(true);
+    });
+
+    it("escalates risky tools as DECISION", () => {
+      const { sm, emitted, writes } = createMachine();
+      sm.processLine(">"); // → IDLE
+      sm.processLine("Forming…"); // → THINKING
+      sm.processLine("Bash npm install express");
+      sm.processLine("Allow Bash tool?");
+      // Should NOT auto-approve
+      expect(writes.filter(w => w === "y\r")).toHaveLength(0);
+      // Should emit decision
+      const decisions = emitted.filter(e => e.classification === Classification.Decision);
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0].text).toContain("Bash");
+      expect(decisions[0].text).toContain("npm install express");
+    });
+
+    it("auto-approves Edit tool (safe by default)", () => {
+      const { sm, writes } = createMachine();
+      sm.processLine(">"); // → IDLE
+      sm.processLine("Forming…"); // → THINKING
+      sm.processLine("Edit src/app.ts");
+      sm.processLine("Allow Edit tool?");
+      expect(writes).toContain("y\r");
+    });
+
+    it("transitions to THINKING after auto-approve", () => {
+      const { sm } = createMachine();
+      sm.processLine(">"); // → IDLE
+      sm.processLine("Forming…"); // → THINKING
+      sm.processLine("Read src/app.ts");
+      sm.processLine("Allow Read tool?"); // auto-approve → THINKING
+      expect(sm.state).toBe(ClaudeState.THINKING);
+    });
+  });
 });
