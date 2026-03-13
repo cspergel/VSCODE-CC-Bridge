@@ -1,7 +1,13 @@
 {
   "name": "claude-code-live-bridge",
   "private": true,
-  "workspaces": ["packages/shared", "packages/agent", "packages/bridge", "packages/dashboard", "packages/cli"],
+  "workspaces": [
+    "packages/shared",
+    "packages/agent",
+    "packages/bridge",
+    "packages/dashboard",
+    "packages/cli"
+  ],
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces --if-present",
@@ -10,5 +16,8 @@
     "dev:agent": "npm run dev --workspace=packages/agent",
     "dev:bridge": "npm run dev --workspace=packages/bridge",
     "dashboard": "npm run start --workspace=packages/dashboard"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc.9"
   }
 }

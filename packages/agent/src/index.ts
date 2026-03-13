@@ -41,6 +41,8 @@ async function main() {
   router.setDatabase(sessionManager.getDatabase());
 
   const ptySessions = new Map<string, PtyWrapper>();
+  /** Track PTYs that have processed at least one command (to adjust Enter timing) */
+  const ptyInitialized = new Set<string>();
 
   function getOrCreatePty(sessionId: string, projectPath: string, sessionName: string): PtyWrapper {
     if (ptySessions.has(sessionId)) return ptySessions.get(sessionId)!;
@@ -324,10 +326,18 @@ async function main() {
       text = `${formatContextHeader(ctx)} ${text}`;
     }
 
-    // Write text first, then send Enter after a short delay
-    // (Claude Code needs time to accept input before submitting)
+    // Write text first, then send Enter after a delay
+    // First command needs longer delay — Claude Code TUI is still initializing
+    const isFirstCommand = !ptyInitialized.has(session.id);
+    const enterDelay = isFirstCommand ? 5000 : 500;
     ptySession.write(text);
-    setTimeout(() => ptySession.write("\r"), 200);
+    setTimeout(() => {
+      ptySession.write("\r");
+      if (isFirstCommand) {
+        ptyInitialized.add(session.id);
+        console.log(`[agent] First command submitted to "${session.name}" (waited ${enterDelay}ms)`);
+      }
+    }, enterDelay);
   });
 
   // Audit log connection events

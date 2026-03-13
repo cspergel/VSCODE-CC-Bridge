@@ -33,31 +33,66 @@ export function stripTuiChrome(line: string): string {
 
 export class LineBuffer {
   private buffer = "";
+  private autoFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly AUTO_FLUSH_MS = 3000;
 
   constructor(private onLine: (line: string) => void) {}
 
   push(chunk: string): void {
-    this.buffer += chunk;
+    // Replace cursor positioning sequences (ESC[row;colH) with \n
+    // so TUI output that uses cursor addressing gets split into lines
+    const normalized = chunk.replace(/\x1b\[\d*;\d*[Hf]/g, "\n");
+    this.buffer += normalized;
     const parts = this.buffer.split("\n");
     // Last element is the incomplete remainder
     this.buffer = parts.pop()!;
     for (const part of parts) {
-      const cleaned = part.replace(ANSI_FULL_RE, " ").replace(/\s+/g, " ").trimEnd();
-      const text = stripTuiChrome(cleaned);
-      if (text.length > 0) {
-        this.onLine(text);
+      this.emitCleaned(part);
+    }
+    // Reset auto-flush timer — if no \n arrives for 3s, flush the buffer
+    this.resetAutoFlush();
+  }
+
+  flush(): void {
+    this.clearAutoFlush();
+    if (this.buffer.length > 0) {
+      this.emitCleaned(this.buffer);
+      this.buffer = "";
+    }
+  }
+
+  destroy(): void {
+    this.clearAutoFlush();
+  }
+
+  private emitCleaned(raw: string): void {
+    const cleaned = raw.replace(ANSI_FULL_RE, " ").replace(/\s+/g, " ").trimEnd();
+    const text = stripTuiChrome(cleaned);
+    if (text.length > 0) {
+      // Split on ● bullet — Claude Code prefixes responses with ● but the PTY
+      // may combine noise + ● response on one line due to cursor positioning.
+      // Splitting here ensures noise and response are processed independently.
+      const segments = text.split(/\s*●\s+/);
+      for (const seg of segments) {
+        const trimmed = seg.trim();
+        if (trimmed.length > 0) {
+          this.onLine(trimmed);
+        }
       }
     }
   }
 
-  flush(): void {
+  private resetAutoFlush(): void {
+    this.clearAutoFlush();
     if (this.buffer.length > 0) {
-      const cleaned = this.buffer.replace(ANSI_FULL_RE, " ").replace(/\s+/g, " ").trimEnd();
-      const text = stripTuiChrome(cleaned);
-      if (text.length > 0) {
-        this.onLine(text);
-      }
-      this.buffer = "";
+      this.autoFlushTimer = setTimeout(() => this.flush(), LineBuffer.AUTO_FLUSH_MS);
+    }
+  }
+
+  private clearAutoFlush(): void {
+    if (this.autoFlushTimer) {
+      clearTimeout(this.autoFlushTimer);
+      this.autoFlushTimer = null;
     }
   }
 }

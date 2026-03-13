@@ -24,6 +24,8 @@ export class MessageRouter {
   }
 
   route(sessionId: string, sessionName: string, line: ClassifiedLine): void {
+    console.log(`[router] ${line.classification}: ${line.text.slice(0, 100)}`);
+
     // Persist to database
     this.db?.insertMessage({
       sessionId,
@@ -85,6 +87,7 @@ export class MessageRouter {
     clearTimeout(buf.timer);
     const digest = buf.lines.join("\n");
     this.outputBuffer.delete(sessionId);
+    console.log(`[router] FLUSH output (${buf.lines.length} lines): ${digest.slice(0, 120)}`);
 
     this.wsServer.sendToBridge(createEnvelope({
       type: MessageType.Response,

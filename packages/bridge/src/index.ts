@@ -24,6 +24,23 @@ function loadConfig(): Config {
   }
 }
 
+/**
+ * Minimal safety-net filter for the bridge.
+ * Primary noise filtering now happens in the agent (classifier.isNoise + LineBuffer ● split).
+ * This catches anything that slips through the agent pipeline.
+ */
+function isResidualNoise(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  // Spinner/animation characters only
+  if (/^[✢✶✻✽·*\s⏵>…●]+$/.test(t)) return true;
+  // >30% spinner chars
+  if ((t.match(/[✢✶✻✽·*…]/g)?.length ?? 0) > t.length * 0.3) return true;
+  // No complete word (3+ letters) in short text
+  if (t.length < 50 && !/[a-zA-Z]{3}/.test(t)) return true;
+  return false;
+}
+
 async function main() {
   const config = loadConfig();
 
@@ -49,19 +66,34 @@ async function main() {
           envelope.type === MessageType.Status ? Classification.Status :
           Classification.Output;
 
+        console.log(`[bridge] ← agent (${envelope.type}): ${JSON.stringify(payload).slice(0, 150)}`);
+
         // Track session count for multi-session tagging
         if (envelope.type === MessageType.Control && payload.action === "session_count") {
           sessionCount = payload.count ?? 1;
           return;
         }
 
+        // Agent already filters noise — just apply minimal safety net per-line
+        const rawText = payload.text as string;
+        if (!rawText) return;
+        const cleanedLines = rawText.split("\n")
+          .filter((line: string) => !isResidualNoise(line));
+        const text = cleanedLines.join("\n").trim();
+        if (!text) {
+          console.log(`[bridge] FILTERED (residual noise): ${rawText.slice(0, 80)}`);
+          return;
+        }
+
         const formatted = formatForWhatsApp({
           classification,
-          text: payload.text,
+          text,
           sessionName: payload.sessionName ?? "default",
           multiSession: sessionCount > 1,
           actions: payload.actions,
         });
+
+        if (!formatted.trim()) return;
 
         console.log(`[bridge] → WhatsApp (${classification}): ${formatted.slice(0, 80)}${formatted.length > 80 ? "..." : ""}`);
 
