@@ -30,6 +30,8 @@ async function main() {
   // Connect to agent
   let agentWs: WebSocket | null = null;
   let sessionCount = 1;
+  // Track the last decision message ID for reaction-based approval
+  let lastDecisionMessageId: string | null = null;
 
   function connectToAgent() {
     agentWs = new WebSocket(`ws://127.0.0.1:${config.server.port}`);
@@ -66,7 +68,11 @@ async function main() {
         // Send to all allowed numbers (single-user)
         for (const num of config.whatsapp.allowedNumbers) {
           try {
-            await waClient.sendToNumber(num, formatted);
+            const msgId = await waClient.sendToNumber(num, formatted);
+            // Track decision messages for reaction-based approval
+            if (classification === Classification.Decision) {
+              lastDecisionMessageId = msgId ?? null;
+            }
           } catch (err) {
             console.error(`[bridge] Failed to send to ${num}:`, err);
           }
@@ -98,6 +104,31 @@ async function main() {
 
   waClient.on("connected", () => console.log("[bridge] WhatsApp connected"));
   waClient.on("blocked", ({ text, reason }: { text: string; reason: string }) => console.log(`[bridge] Blocked: ${reason} — ${text}`));
+
+  // Handle reaction-based decision approval (👍/👎)
+  waClient.on("reaction", ({ messageId, emoji, sender }: { messageId: string; emoji: string; sender: string }) => {
+    console.log(`[bridge] Reaction: ${emoji} on ${messageId} from ${sender}`);
+    // Only handle reactions on the last decision message
+    if (messageId === lastDecisionMessageId) {
+      lastDecisionMessageId = null;
+      const approved = emoji === "\u{1F44D}" || emoji === "\u{1F44D}\u{1F3FB}" || emoji === "\u{1F44D}\u{1F3FC}" ||
+        emoji === "\u{1F44D}\u{1F3FD}" || emoji === "\u{1F44D}\u{1F3FE}" || emoji === "\u{1F44D}\u{1F3FF}";
+      const denied = emoji === "\u{1F44E}" || emoji === "\u{1F44E}\u{1F3FB}" || emoji === "\u{1F44E}\u{1F3FC}" ||
+        emoji === "\u{1F44E}\u{1F3FD}" || emoji === "\u{1F44E}\u{1F3FE}" || emoji === "\u{1F44E}\u{1F3FF}";
+      if (approved || denied) {
+        const reply = approved ? "y" : "n";
+        if (agentWs?.readyState === WebSocket.OPEN) {
+          agentWs.send(JSON.stringify(createEnvelope({
+            type: MessageType.Command,
+            source: Source.WhatsApp,
+            sessionId: "",
+            payload: { text: reply, intent: "decision_reply", sender },
+          })));
+        }
+        console.log(`[bridge] Decision ${approved ? "APPROVED" : "DENIED"} via reaction`);
+      }
+    }
+  });
 
   // Graceful shutdown
   let shuttingDown = false;

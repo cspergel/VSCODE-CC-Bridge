@@ -186,10 +186,35 @@ export class WhatsAppClient extends EventEmitter {
         });
       }
     });
+
+    // Listen for message reactions (👍/👎 for decision approval)
+    sock.ev.on("messages.reaction", (reactions) => {
+      for (const { key, reaction } of reactions) {
+        if (!reaction?.text) continue;
+        // Resolve reactor phone number
+        const reactorJid = reaction.key?.participant ?? reaction.key?.remoteJid ?? "";
+        let phoneNumber: string;
+        if (reactorJid.endsWith("@s.whatsapp.net")) {
+          phoneNumber = "+" + reactorJid.replace(/@s\.whatsapp\.net$/, "");
+        } else if (reactorJid.endsWith("@lid")) {
+          phoneNumber = "+" + (sock.user?.id?.replace(/:.*$/, "") ?? "");
+        } else {
+          continue;
+        }
+        // Only process reactions from allowed numbers
+        if (!this.auth.isAllowed(phoneNumber)) continue;
+
+        this.emit("reaction", {
+          messageId: key.id,
+          emoji: reaction.text,
+          sender: phoneNumber,
+        });
+      }
+    });
   }
 
-  async sendMessage(jid: string, text: string): Promise<void> {
-    if (!this.sock) return;
+  async sendMessage(jid: string, text: string): Promise<string | undefined> {
+    if (!this.sock) return undefined;
     const sent = await this.sock.sendMessage(jid, { text });
     if (sent?.key?.id) {
       this.sentMessageIds.add(sent.key.id);
@@ -199,12 +224,13 @@ export class WhatsAppClient extends EventEmitter {
         if (first) this.sentMessageIds.delete(first);
       }
     }
+    return sent?.key?.id ?? undefined;
   }
 
-  async sendToNumber(phoneNumber: string, text: string): Promise<void> {
+  async sendToNumber(phoneNumber: string, text: string): Promise<string | undefined> {
     // Always use @s.whatsapp.net — LID JIDs cause "waiting for this message"
     const jid = phoneNumber.replace("+", "") + "@s.whatsapp.net";
     console.log(`[baileys] Sending to: ${jid}`);
-    await this.sendMessage(jid, text);
+    return await this.sendMessage(jid, text);
   }
 }
