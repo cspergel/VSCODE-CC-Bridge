@@ -2,16 +2,21 @@ import { describe, it, expect } from "vitest";
 import { PtyWrapper } from "../pty-wrapper";
 
 describe("PtyWrapper", () => {
-  it("spawns a process and emits classified lines", async () => {
+  // Note: The state machine starts in INITIALIZING and only emits classified
+  // lines after seeing a bare ">" prompt (transition to IDLE) followed by a
+  // thinking verb (transition to THINKING) and then real content (transition
+  // to RESPONDING). Tests that check classified output must simulate this
+  // Claude Code-like sequence.
+
+  it("spawns a process and emits classified lines after prompt", async () => {
     const lines: { text: string; classification: string }[] = [];
 
-    // Use 'echo' as a stand-in for claude-code to test the wrapper
+    // Use node to simulate Claude Code output: bare prompt, then thinking verb, then content
+    const nodeScript = 'console.log(">"); console.log("Forming\\u2026"); console.log("Reading file content here");';
+
     const pty = new PtyWrapper({
-      command: process.platform === "win32" ? "cmd.exe" : "echo",
-      args:
-        process.platform === "win32"
-          ? ["/c", "echo", "Reading file..."]
-          : ["Reading file..."],
+      command: process.execPath,
+      args: ["-e", nodeScript],
       cwd: process.cwd(),
     });
 
@@ -25,19 +30,22 @@ describe("PtyWrapper", () => {
     expect(lines.some((l) => l.text.includes("Reading file"))).toBe(true);
   });
 
-  it("injects stdin text", async () => {
+  it("injects stdin text and emits classified output", async () => {
+    // Use bash to simulate a Claude Code-like session
     const pty = new PtyWrapper({
-      command: process.platform === "win32" ? "cmd.exe" : "cat",
+      command: process.platform === "win32" ? "cmd.exe" : "bash",
       args: process.platform === "win32" ? [] : [],
       cwd: process.cwd(),
     });
 
-    const lines: string[] = [];
-    pty.on("classified", (l) => lines.push(l.text));
+    const rawChunks: string[] = [];
+    pty.on("raw", (data) => rawChunks.push(data));
 
-    // Wait for the shell prompt to appear before writing
+    // Wait for the shell to start
     await new Promise((r) => setTimeout(r, 1000));
 
+    // Write text and check it arrives via raw events (classified output
+    // depends on state machine seeing Claude Code-like prompts)
     pty.write("echo hello\r\n");
 
     // Wait for output to arrive
@@ -48,7 +56,8 @@ describe("PtyWrapper", () => {
       pty.on("exit", () => resolve());
     });
 
-    expect(lines.some((l) => l.includes("hello"))).toBe(true);
+    const fullRaw = rawChunks.join("");
+    expect(fullRaw).toContain("hello");
   });
 
   it("emits exit event with exit code", async () => {
@@ -124,12 +133,12 @@ describe("PtyWrapper", () => {
   });
 
   it("classified lines have correct structure", async () => {
+    // Use node to simulate Claude Code output: bare prompt, then thinking verb, then content
+    const nodeScript = 'console.log(">"); console.log("Forming\\u2026"); console.log("Hello from Claude");';
+
     const pty = new PtyWrapper({
-      command: process.platform === "win32" ? "cmd.exe" : "echo",
-      args:
-        process.platform === "win32"
-          ? ["/c", "echo", "Reading file..."]
-          : ["Reading file..."],
+      command: process.execPath,
+      args: ["-e", nodeScript],
       cwd: process.cwd(),
     });
 

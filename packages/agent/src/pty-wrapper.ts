@@ -1,8 +1,10 @@
 import { EventEmitter } from "events";
 import * as pty from "node-pty";
 import { LineBuffer } from "./line-buffer";
-import { classify } from "./classifier";
-import { Classification } from "@live-bridge/shared";
+import { ClaudeStateMachine } from "./state-machine";
+
+// Re-export ClassifiedLine so existing imports from pty-wrapper still work
+export type { ClassifiedLine } from "./state-machine";
 
 export interface PtyOptions {
   command: string;
@@ -12,33 +14,23 @@ export interface PtyOptions {
   autoRestart?: boolean;
 }
 
-export interface ClassifiedLine {
-  text: string;
-  classification: Classification;
-  timestamp: string;
-  raw: string;
-}
-
 export class PtyWrapper extends EventEmitter {
   private process!: pty.IPty;
   private lineBuffer: LineBuffer;
-  private rawBuffer: string[] = [];
+  private stateMachine: ClaudeStateMachine;
   private restartCount = 0;
   private static readonly MAX_RESTARTS = 5;
 
   constructor(opts: PtyOptions) {
     super();
 
+    this.stateMachine = new ClaudeStateMachine(
+      (line) => this.emit("classified", line),
+      (text) => this.process.write(text),
+    );
+
     this.lineBuffer = new LineBuffer((line) => {
-      if (line.trim().length === 0) return;
-      const classified: ClassifiedLine = {
-        text: line,
-        classification: classify(line),
-        timestamp: new Date().toISOString(),
-        raw: this.rawBuffer.join(""),
-      };
-      this.rawBuffer = [];
-      this.emit("classified", classified);
+      this.stateMachine.processLine(line);
     });
 
     this.spawn(opts);
@@ -57,7 +49,6 @@ export class PtyWrapper extends EventEmitter {
     });
 
     this.process.onData((data: string) => {
-      this.rawBuffer.push(data);
       this.lineBuffer.push(data);
       this.emit("raw", data);
     });
@@ -76,7 +67,7 @@ export class PtyWrapper extends EventEmitter {
   }
 
   private respawn(opts: PtyOptions): void {
-    this.rawBuffer = [];
+    this.stateMachine.reset();
     this.spawn(opts);
     this.emit("restarted");
   }
