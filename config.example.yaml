@@ -2,6 +2,7 @@ server:
   port: 9377
   host: 127.0.0.1
 
+# WhatsApp (optional — comment out to disable)
 whatsapp:
   allowedNumbers:
     - "+1234567890"
@@ -10,6 +11,13 @@ whatsapp:
   rateLimit:
     maxPerHour: 30
     burstMax: 5
+
+# Telegram (optional — comment out to disable)
+# Get bot token from @BotFather, chat ID from @userinfobot
+telegram:
+  botToken: "YOUR_BOT_TOKEN_FROM_BOTFATHER"
+  allowedChatIds:
+    - 123456789
 
 classifier:
   statusBatchInterval: 10

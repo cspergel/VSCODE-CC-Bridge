@@ -14,11 +14,13 @@
     "@whiskeysockets/baileys": "^6.17.16",
     "bcrypt": "^5.1.0",
     "js-yaml": "^4.1.0",
+    "node-telegram-bot-api": "^0.66.0",
     "qrcode-terminal": "^0.12.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.0",
+    "@types/node-telegram-bot-api": "^0.64.0",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.0",
     "tsx": "^4.0.0",

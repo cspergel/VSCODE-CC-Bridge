@@ -140,7 +140,7 @@ async function main() {
     }));
   }
 
-  // Send a text response back to WhatsApp via bridge
+  // Send a text response back to bridge (WhatsApp/Telegram)
   function replyToBridge(text: string, sessionName = "system"): void {
     wsServer.sendToBridge(createEnvelope({
       type: MessageType.Response,
@@ -152,7 +152,7 @@ async function main() {
 
   console.log(`[agent] Bridge WS on :${config.server.port}`);
 
-  // Handle inbound commands from bridge (WhatsApp)
+  // Handle inbound commands from bridge (WhatsApp/Telegram)
   wsServer.on("envelope", async (envelope) => {
     if (envelope.type !== MessageType.Command) return;
 
@@ -271,18 +271,30 @@ async function main() {
       // Unhandled specials fall through to regular PTY command
     }
 
-    // --- Decision reply → write y/n directly to PTY ---
+    // --- Decision reply → forward directly to PTY ---
+    // For interactive TUI pickers: translate number to arrow keys + Enter
+    // For y/n prompts: forward as text
     if (intent === "decision_reply") {
       const session = sessionManager.resolve(envelope.sessionId) ?? sessionManager.getActive();
       if (session) {
         const pty = ptySessions.get(session.id);
         if (pty) {
-          const t = (payload.text as string).trim().toLowerCase();
-          const approved = t === "y" || t === "yes" || t === "accept" || t === "1";
-          const denied = t === "n" || t === "no" || t === "reject" || t === "2";
-          if (approved || denied) {
-            pty.write(approved ? "y\r" : "n\r");
-            console.log(`[agent] Decision ${approved ? "APPROVED" : "DENIED"} for "${session.name}"`);
+          const t = (payload.text as string).trim();
+          if (t) {
+            const num = parseInt(t, 10);
+            if (!isNaN(num) && num >= 1 && num <= 10) {
+              // Interactive picker: send (N-1) down arrows then Enter
+              const downArrow = "\x1b[B";
+              for (let i = 1; i < num; i++) {
+                pty.write(downArrow);
+              }
+              setTimeout(() => pty.write("\r"), 100);
+              console.log(`[agent] Picker selection ${num} → ${num - 1} down arrows + Enter for "${session.name}"`);
+            } else {
+              // Text reply (y/n, accept/reject, etc.)
+              pty.write(t + "\r");
+              console.log(`[agent] Decision reply "${t}" forwarded to "${session.name}"`);
+            }
           }
         }
       }
@@ -315,7 +327,7 @@ async function main() {
       formattedContent: text,
     });
     sessionManager.getDatabase().logAudit({
-      event: "command", source: payload.sender ?? "whatsapp",
+      event: "command", source: payload.sender ?? "bridge",
       detail: text,
     });
 

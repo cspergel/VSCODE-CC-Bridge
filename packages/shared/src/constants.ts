@@ -11,6 +11,7 @@ export enum MessageType {
 
 export enum Source {
   WhatsApp = "whatsapp",
+  Telegram = "telegram",
   Agent = "agent",
   ClaudeCode = "claude-code",
 }
