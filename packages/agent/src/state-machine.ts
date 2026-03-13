@@ -43,8 +43,9 @@ function isThinkingNoise(text: string): boolean {
   if (/^[✢✶✻✽·*\s⏵>…●]+$/.test(t)) return true;
   // Thinking verb (Forming…, Seasoning…)
   if (THINKING_VERB_RE.test(t)) return true;
-  // word+ellipsis with spinner chars
+  // word+ellipsis with spinner chars or "thinking" label (e.g. "Combobulating… thinking >")
   if (THINKING_LINE_RE.test(t) && SPINNER_CHARS.test(t)) return true;
+  if (THINKING_LINE_RE.test(t) && /\bthinking\b/i.test(t) && t.length < 80) return true;
   // >30% spinner chars
   if ((t.match(/[✢✶✻✽·*…]/g)?.length ?? 0) > t.length * 0.3) return true;
   // (thinking) label
