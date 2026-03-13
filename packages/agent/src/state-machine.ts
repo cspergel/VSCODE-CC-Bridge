@@ -16,12 +16,12 @@ export interface ClassifiedLine {
 }
 
 // Spinner and thinking animation characters used by Claude Code TUI
-const SPINNER_CHARS = /[✢✶✻✽·]/;
-const THINKING_VERB_RE = /^\w+…$/; // "Forming…", "Symbioting…", etc.
+const SPINNER_CHARS = /[✢✶✻✽·*●⏵]/;
+const THINKING_VERB_RE = /^[*\s✢✶✻✽·●⏵>]*\w+…[*\s✢✶✻✽·●⏵>]*$/; // "Forming…", "* Swirling…", "Swirling… >"
 const THINKING_LINE_RE = /\w+…/; // word+ellipsis anywhere in line
 const THINKING_LABEL_RE = /\(thinking\)/i;
 const PROMPT_RE = /^>\s*$/; // bare ">" prompt
-const ECHOED_CMD_RE = /^>\s*\[ctx:/; // our git context injection echo
+const ECHOED_CMD_RE = /^>?\s*\[ctx:/; // our git context injection echo (with or without > prefix)
 const WELCOME_RE = /^(Claude Code v\d|Tips for getting|Welcome back|Recent activity|No recent activity|Opus \d|Claude \d|Sonnet \d|Haiku \d|Organization$)/i;
 const UI_CHROME_RE = /^(\? for shortcuts|\/ide for |esc to (interrupt|cancel)|tab to amend|ctrl\+o)/i;
 
@@ -273,6 +273,7 @@ export class ClaudeStateMachine {
       return;
     }
     if (isUiChrome(text)) return;
+    if (isThinkingNoise(text)) return; // Drop spinner fragments that slip through
     // Forward content as classified output
     this.emit(text, classifyContent(text));
   }

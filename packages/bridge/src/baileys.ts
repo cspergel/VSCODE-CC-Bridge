@@ -67,7 +67,7 @@ export class WhatsAppClient extends EventEmitter {
 
     sock.ev.on("creds.update", saveCreds);
 
-    sock.ev.on("connection.update", (update) => {
+    sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       // Display QR code for pairing
@@ -86,6 +86,13 @@ export class WhatsAppClient extends EventEmitter {
         this.emit("disconnected", reason);
       } else if (connection === "open") {
         this.reconnectDelay = 3000;
+        // Announce presence to establish encryption sessions
+        try {
+          await sock.sendPresenceUpdate("available");
+          console.log("[baileys] Presence: available");
+        } catch (err) {
+          console.warn("[baileys] Presence update failed:", (err as Error).message);
+        }
         this.emit("connected");
       }
     });
@@ -108,7 +115,20 @@ export class WhatsAppClient extends EventEmitter {
         let phoneNumber: string;
         let replyJid: string;
 
-        if (remoteJid.endsWith("@s.whatsapp.net")) {
+        if (remoteJid.endsWith("@g.us")) {
+          // Group message — resolve sender from participant
+          const senderJid = msg.key.participant ?? "";
+          let senderNumber: string;
+          if (senderJid.endsWith("@lid") || !senderJid.includes("@s.whatsapp.net")) {
+            // LID participant — use our own number (single-user bridge)
+            senderNumber = sock.user?.id?.replace(/:.*$/, "") ?? "";
+          } else {
+            senderNumber = senderJid.replace(/:.*$/, "").replace(/@.*$/, "");
+          }
+          phoneNumber = "+" + senderNumber;
+          replyJid = remoteJid; // Reply to the group
+          console.log(`[baileys] Group message from ${phoneNumber} in ${remoteJid}`);
+        } else if (remoteJid.endsWith("@s.whatsapp.net")) {
           // Traditional format: number@s.whatsapp.net
           const sender = remoteJid.replace(/@s\.whatsapp\.net$/, "");
           phoneNumber = "+" + sender;
@@ -117,10 +137,10 @@ export class WhatsAppClient extends EventEmitter {
           // LID (Linked Identity) format — resolve from socket user info
           const myNumber = sock.user?.id?.replace(/:.*$/, "") ?? "";
           phoneNumber = "+" + myNumber;
-          replyJid = remoteJid; // Reply to the same LID JID
+          replyJid = remoteJid;
           console.log(`[baileys] Resolved LID → ${phoneNumber}`);
         } else {
-          // Unknown format (group, broadcast, etc.) — skip
+          // Unknown format (broadcast, etc.) — skip
           console.log(`[baileys] Skipping unknown JID format: ${remoteJid}`);
           continue;
         }
