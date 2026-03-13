@@ -1,4 +1,3 @@
-import { EventEmitter } from "events";
 import { Classification } from "@live-bridge/shared";
 
 export enum ClaudeState {
@@ -180,14 +179,15 @@ export class ClaudeStateMachine {
   }
 
   private handleThinking(text: string): void {
-    // Send one "Thinking..." status per thinking phase
-    if (!this.thinkingNotified) {
-      this.thinkingNotified = true;
-      this.emit("Thinking...", Classification.Status);
-    }
+    // Check for prompt BEFORE emitting status — avoids false "Thinking..." on zero-length phases
     if (isPrompt(text)) {
       this.transition(ClaudeState.IDLE);
       return;
+    }
+    // Send one "Thinking..." status per thinking phase (only after confirming real thinking)
+    if (!this.thinkingNotified) {
+      this.thinkingNotified = true;
+      this.emit("Thinking...", Classification.Status);
     }
     if (looksLikeContent(text)) {
       this.transition(ClaudeState.RESPONDING);
