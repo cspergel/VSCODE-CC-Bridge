@@ -269,6 +269,24 @@ async function main() {
       // Unhandled specials fall through to regular PTY command
     }
 
+    // --- Decision reply → write y/n directly to PTY ---
+    if (intent === "decision_reply") {
+      const session = sessionManager.resolve(envelope.sessionId) ?? sessionManager.getActive();
+      if (session) {
+        const pty = ptySessions.get(session.id);
+        if (pty) {
+          const t = (payload.text as string).trim().toLowerCase();
+          const approved = t === "y" || t === "yes" || t === "accept" || t === "1";
+          const denied = t === "n" || t === "no" || t === "reject" || t === "2";
+          if (approved || denied) {
+            pty.write(approved ? "y\r" : "n\r");
+            console.log(`[agent] Decision ${approved ? "APPROVED" : "DENIED"} for "${session.name}"`);
+          }
+        }
+      }
+      return;
+    }
+
     // --- Regular command → PTY ---
 
     const sessionId = envelope.sessionId;
