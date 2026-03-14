@@ -10,10 +10,19 @@
   import { pollServices } from '../stores/services.js';
   import { fetchSessions } from '../stores/sessions.js';
   import { onMount } from 'svelte';
+  import { fly } from 'svelte/transition';
+
+  const TAB_ORDER = ['terminal', 'sessions', 'activity', 'settings'];
 
   let activeTab = $state('terminal');
+  let prevTabIndex = $state(0);
+  let slideDirection = $state(1); // 1 = right, -1 = left
 
   function handleSwitch(tab) {
+    const newIndex = TAB_ORDER.indexOf(tab);
+    const oldIndex = TAB_ORDER.indexOf(activeTab);
+    slideDirection = newIndex > oldIndex ? 1 : -1;
+    prevTabIndex = oldIndex;
     activeTab = tab;
   }
 
@@ -38,23 +47,23 @@
   <Header title={TAB_TITLES[activeTab]} />
 
   <main class="app-content">
-    {#if activeTab === 'terminal'}
-      <div class="view">
-        <TerminalView />
+    {#key activeTab}
+      <div
+        class="view"
+        in:fly={{ x: slideDirection * 80, duration: 180, delay: 30 }}
+        out:fly={{ x: slideDirection * -80, duration: 150 }}
+      >
+        {#if activeTab === 'terminal'}
+          <TerminalView />
+        {:else if activeTab === 'sessions'}
+          <SessionsView />
+        {:else if activeTab === 'activity'}
+          <ActivityView />
+        {:else if activeTab === 'settings'}
+          <SettingsView />
+        {/if}
       </div>
-    {:else if activeTab === 'sessions'}
-      <div class="view">
-        <SessionsView />
-      </div>
-    {:else if activeTab === 'activity'}
-      <div class="view">
-        <ActivityView />
-      </div>
-    {:else if activeTab === 'settings'}
-      <div class="view">
-        <SettingsView />
-      </div>
-    {/if}
+    {/key}
   </main>
 
   <TabBar {activeTab} onSwitch={handleSwitch} />
