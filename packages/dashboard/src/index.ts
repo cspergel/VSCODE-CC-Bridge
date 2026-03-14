@@ -1,5 +1,6 @@
 import express from "express";
 import { createServer } from "http";
+import { existsSync } from "fs";
 import { resolve } from "path";
 import { Database } from "@live-bridge/agent/db";
 import { ProcessManager } from "./process-manager";
@@ -45,15 +46,17 @@ async function main() {
   // API routes
   app.use("/api", createApiRouter(pm, db));
 
-  // Static files
-  app.use(express.static(resolve(__dirname, "..", "public")));
+  // Serve new Svelte frontend (built), fall back to legacy
+  const clientDist = resolve(__dirname, "..", "client", "dist");
+  const legacyPublic = resolve(__dirname, "..", "public");
+  app.use(express.static(existsSync(clientDist) ? clientDist : legacyPublic));
 
   // Start HTTP server
   server.listen(PORT, () => {
     console.log(`[dashboard] http://localhost:${PORT}`);
   });
 
-  // Auto-start services: agent first, then bridge after 2s
+  // Auto-start services: agent first, then bridge after 2s, then tunnel after 4s
   console.log("[dashboard] Starting agent...");
   pm.start("agent");
 
@@ -61,6 +64,11 @@ async function main() {
     console.log("[dashboard] Starting bridge...");
     pm.start("bridge");
   }, 2000);
+
+  setTimeout(() => {
+    console.log("[dashboard] Starting tunnel...");
+    pm.start("tunnel");
+  }, 4000);
 
   // Graceful shutdown
   let shuttingDown = false;
