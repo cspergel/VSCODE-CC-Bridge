@@ -1,0 +1,1234 @@
+/* Panel system — gesture-driven slide-up sheets (mobile), sidebar content (desktop) */
+
+(function () {
+  'use strict';
+
+  // --- State ---
+  var currentPanel = null;
+  var logBuffer = [];
+  var LOG_BUFFER_MAX = 1000;
+  var logFilter = 'all'; // 'all' | 'agent' | 'bridge'
+
+  // --- DOM refs ---
+  var backdrop = document.getElementById('panelBackdrop');
+  var container = document.getElementById('panelContainer');
+  var content = document.getElementById('panelContent');
+  var sidebar = document.getElementById('sidebar');
+  var sidebarPanel = document.getElementById('sidebarPanel');
+
+  // --- Helpers ---
+  var esc = function (s) { return window.app.escapeHtml(s); };
+  var trunc = function (s, n) { return window.app.truncate(s, n); };
+
+  function isMobile() {
+    return window.innerWidth <= 768;
+  }
+
+  function formatTime(dateStr) {
+    if (!dateStr) return '';
+    var d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    var h = d.getHours().toString();
+    var m = d.getMinutes().toString().padStart(2, '0');
+    var s = d.getSeconds().toString().padStart(2, '0');
+    return h + ':' + m + ':' + s;
+  }
+
+  function formatDuration(seconds) {
+    if (window.app.formatDuration) return window.app.formatDuration(seconds);
+    if (seconds < 60) return seconds + 's';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+    return Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
+  }
+
+  // =========================================================================
+  // PANEL OPEN / CLOSE / TOGGLE
+  // =========================================================================
+
+  function open(panelName) {
+    if (isMobile()) {
+      openMobile(panelName);
+    } else {
+      openDesktop(panelName);
+    }
+    currentPanel = panelName;
+  }
+
+  function openMobile(panelName) {
+    var html = renderPanel(panelName);
+    content.innerHTML = html;
+    bindPanelEvents(panelName);
+
+    // Show backdrop
+    backdrop.style.display = 'block';
+    // Force reflow for transition
+    void backdrop.offsetHeight;
+    backdrop.classList.add('visible');
+
+    // Slide up panel — default snap to 50%
+    container.classList.add('open');
+    container.style.transform = 'translateY(calc(100% - 50vh))';
+  }
+
+  function openDesktop(panelName) {
+    var html = renderPanel(panelName);
+    sidebarPanel.innerHTML = html;
+    sidebarPanel.classList.add('active');
+    sidebar.classList.add('expanded');
+    bindPanelEvents(panelName);
+
+    // Update sidebar button active state
+    var btns = sidebar.querySelectorAll('.sidebar-btn');
+    for (var i = 0; i < btns.length; i++) {
+      var btn = btns[i];
+      if (btn.getAttribute('data-panel') === panelName) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    }
+  }
+
+  function close() {
+    if (isMobile()) {
+      closeMobile();
+    } else {
+      closeDesktop();
+    }
+    currentPanel = null;
+  }
+
+  function closeMobile() {
+    backdrop.classList.remove('visible');
+    container.classList.remove('open');
+    container.style.transform = 'translateY(100%)';
+
+    // Hide backdrop after transition
+    setTimeout(function () {
+      if (!currentPanel) {
+        backdrop.style.display = 'none';
+      }
+    }, 300);
+  }
+
+  function closeDesktop() {
+    sidebar.classList.remove('expanded');
+    sidebarPanel.classList.remove('active');
+    sidebarPanel.innerHTML = '';
+
+    // Clear active sidebar buttons
+    var btns = sidebar.querySelectorAll('.sidebar-btn');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.remove('active');
+    }
+  }
+
+  function toggle(panelName) {
+    if (currentPanel === panelName) {
+      close();
+    } else if (currentPanel) {
+      // Switch to different panel
+      currentPanel = panelName;
+      if (isMobile()) {
+        var html = renderPanel(panelName);
+        content.innerHTML = html;
+        bindPanelEvents(panelName);
+      } else {
+        openDesktop(panelName);
+      }
+    } else {
+      open(panelName);
+    }
+  }
+
+  function isOpen() {
+    return currentPanel;
+  }
+
+  // =========================================================================
+  // GESTURE HANDLING (mobile only)
+  // =========================================================================
+
+  var dragState = {
+    active: false,
+    startY: 0,
+    startTime: 0,
+    currentY: 0,
+    startTranslateY: 0,
+    rafId: null
+  };
+
+  var SNAP_POINTS = [0.30, 0.50, 0.85]; // fraction of viewport height
+  var VELOCITY_THRESHOLD = 0.5; // px per ms
+  var DISMISS_VELOCITY = 0.3;
+
+  function getContainerTranslateY() {
+    var style = container.style.transform;
+    // Parse translateY from e.g. "translateY(calc(100% - 50vh))" or "translateY(123px)"
+    var match = style.match(/translateY\(([^)]+)\)/);
+    if (!match) return window.innerHeight;
+    var val = match[1];
+    // If calc format: "calc(100% - Xvh)"
+    var calcMatch = val.match(/calc\(100%\s*-\s*([\d.]+)vh\)/);
+    if (calcMatch) {
+      var vh = parseFloat(calcMatch[1]);
+      return window.innerHeight - (vh / 100 * window.innerHeight);
+    }
+    // If plain px
+    var pxMatch = val.match(/([\d.-]+)px/);
+    if (pxMatch) return parseFloat(pxMatch[1]);
+    return window.innerHeight;
+  }
+
+  function onTouchStart(e) {
+    if (!currentPanel || !isMobile()) return;
+    var touch = e.touches[0];
+    dragState.active = true;
+    dragState.startY = touch.clientY;
+    dragState.startTime = Date.now();
+    dragState.currentY = touch.clientY;
+    dragState.startTranslateY = getContainerTranslateY();
+    container.classList.add('dragging');
+  }
+
+  function onTouchMove(e) {
+    if (!dragState.active) return;
+    var touch = e.touches[0];
+    dragState.currentY = touch.clientY;
+
+    if (dragState.rafId) cancelAnimationFrame(dragState.rafId);
+    dragState.rafId = requestAnimationFrame(function () {
+      var deltaY = dragState.currentY - dragState.startY;
+      var newTranslateY = dragState.startTranslateY + deltaY;
+      // Clamp: don't let panel go above 85vh or below screen bottom
+      var minY = window.innerHeight * (1 - 0.85);
+      var maxY = window.innerHeight;
+      newTranslateY = Math.max(minY, Math.min(maxY, newTranslateY));
+      container.style.transform = 'translateY(' + newTranslateY + 'px)';
+    });
+  }
+
+  function onTouchEnd() {
+    if (!dragState.active) return;
+    dragState.active = false;
+    container.classList.remove('dragging');
+
+    if (dragState.rafId) {
+      cancelAnimationFrame(dragState.rafId);
+      dragState.rafId = null;
+    }
+
+    var deltaY = dragState.currentY - dragState.startY;
+    var elapsed = Date.now() - dragState.startTime;
+    var velocity = elapsed > 0 ? deltaY / elapsed : 0; // positive = downward
+
+    var currentTranslateY = dragState.startTranslateY + deltaY;
+    var vp = window.innerHeight;
+    var currentHeight = vp - currentTranslateY; // how tall the panel appears
+    var currentFraction = currentHeight / vp;
+
+    // Velocity-based snap
+    if (velocity > DISMISS_VELOCITY) {
+      // Flick down → dismiss
+      close();
+      return;
+    }
+
+    if (velocity < -VELOCITY_THRESHOLD) {
+      // Flick up → snap to next higher point
+      var nextUp = null;
+      for (var i = 0; i < SNAP_POINTS.length; i++) {
+        if (SNAP_POINTS[i] > currentFraction + 0.05) {
+          nextUp = SNAP_POINTS[i];
+          break;
+        }
+      }
+      if (!nextUp) nextUp = SNAP_POINTS[SNAP_POINTS.length - 1];
+      snapTo(nextUp);
+      return;
+    }
+
+    // Position-based: snap to nearest
+    var nearest = SNAP_POINTS[0];
+    var nearestDist = Math.abs(currentFraction - nearest);
+    for (var j = 1; j < SNAP_POINTS.length; j++) {
+      var dist = Math.abs(currentFraction - SNAP_POINTS[j]);
+      if (dist < nearestDist) {
+        nearest = SNAP_POINTS[j];
+        nearestDist = dist;
+      }
+    }
+
+    // If below lowest snap point significantly, dismiss
+    if (currentFraction < SNAP_POINTS[0] * 0.5) {
+      close();
+      return;
+    }
+
+    snapTo(nearest);
+  }
+
+  function snapTo(fraction) {
+    container.style.transform = 'translateY(calc(100% - ' + (fraction * 100) + 'vh))';
+  }
+
+  // Attach gesture listeners
+  if (container) {
+    var dragHandle = container.querySelector('.panel-drag-handle');
+    if (dragHandle) {
+      dragHandle.addEventListener('touchstart', onTouchStart, { passive: true });
+    }
+    container.addEventListener('touchmove', onTouchMove, { passive: true });
+    container.addEventListener('touchend', onTouchEnd);
+  }
+
+  // Backdrop tap → close
+  if (backdrop) {
+    backdrop.addEventListener('click', function () {
+      close();
+    });
+  }
+
+  // =========================================================================
+  // PANEL CONTENT RENDERERS
+  // =========================================================================
+
+  function renderPanel(name) {
+    switch (name) {
+      case 'sessions':  return renderSessionsPanel();
+      case 'logs':      return renderLogsPanel();
+      case 'services':  return renderServicesPanel();
+      case 'messages':  return renderMessagesPanel();
+      case 'audit':     return renderAuditPanel();
+      case 'newSession': return renderNewSessionPanel();
+      default:          return '<div class="panel-empty"><div class="empty-icon">?</div>Unknown panel</div>';
+    }
+  }
+
+  // --- Sessions Panel ---
+  function renderSessionsPanel() {
+    var html = '<div class="panel-header">';
+    html += '<h2>Sessions</h2>';
+    html += '<div class="panel-header-actions">';
+    html += '<button class="panel-btn primary" id="panelNewSessionBtn">+ New</button>';
+    html += '</div></div>';
+    html += '<div id="sessionsList"><div class="panel-empty"><div class="empty-icon">...</div>Loading sessions...</div></div>';
+
+    // Fetch sessions async
+    setTimeout(loadSessionsList, 0);
+
+    return html;
+  }
+
+  function loadSessionsList() {
+    fetch('/api/sessions')
+      .then(function (res) { return res.json(); })
+      .then(function (sessions) {
+        var list = document.getElementById('sessionsList');
+        if (!list) return;
+
+        if (!sessions || sessions.length === 0) {
+          list.innerHTML = '<div class="panel-empty"><div class="empty-icon">&#x1F4CB;</div>No sessions yet.<br>Create one to get started.</div>';
+          return;
+        }
+
+        var html = '';
+        for (var i = 0; i < sessions.length; i++) {
+          var s = sessions[i];
+          var isActive = s.id === window.app.activeSessionId;
+          var statusClass = s.status || 'idle';
+          html += '<div class="session-card' + (isActive ? ' active' : '') + '" data-session-id="' + esc(s.id) + '">';
+          html += '<span class="dot ' + esc(statusClass) + '"></span>';
+          html += '<div class="session-card-info">';
+          html += '<div class="session-card-name">' + esc(s.name || s.id) + '</div>';
+          html += '<div class="session-card-path">' + esc(s.projectPath || '') + '</div>';
+          html += '</div>';
+          html += '<div class="session-card-status">' + esc(statusClass) + '</div>';
+          html += '<div class="delete-reveal">Delete</div>';
+          html += '</div>';
+        }
+        list.innerHTML = html;
+      })
+      .catch(function () {
+        var list = document.getElementById('sessionsList');
+        if (list) {
+          list.innerHTML = '<div class="panel-empty"><div class="empty-icon">!</div>Failed to load sessions</div>';
+        }
+      });
+  }
+
+  // --- Logs Panel ---
+  function renderLogsPanel() {
+    var html = '<div class="panel-header">';
+    html += '<h2>Logs</h2>';
+    html += '<div class="panel-header-actions">';
+    html += '<button class="panel-btn" id="panelClearLogsBtn">Clear</button>';
+    html += '</div></div>';
+
+    // Filter chips
+    html += '<div class="log-filter-chips">';
+    html += '<button class="filter-chip' + (logFilter === 'all' ? ' active' : '') + '" data-filter="all">All</button>';
+    html += '<button class="filter-chip' + (logFilter === 'agent' ? ' active' : '') + '" data-filter="agent">Agent</button>';
+    html += '<button class="filter-chip' + (logFilter === 'bridge' ? ' active' : '') + '" data-filter="bridge">Bridge</button>';
+    html += '</div>';
+
+    // Log scroll
+    html += '<div class="log-scroll" id="logScroll">';
+    html += renderLogLines();
+    html += '</div>';
+
+    return html;
+  }
+
+  function renderLogLines() {
+    var html = '';
+    for (var i = 0; i < logBuffer.length; i++) {
+      var line = logBuffer[i];
+      if (logFilter !== 'all') {
+        var svc = parseLogService(line);
+        if (svc !== logFilter) continue;
+      }
+      html += renderLogLine(line);
+    }
+    if (html === '') {
+      html = '<div class="panel-empty">No logs yet</div>';
+    }
+    return html;
+  }
+
+  function renderLogLine(line) {
+    // Parse log line: could be a string or object with {timestamp, service, message, stream}
+    if (typeof line === 'object' && line !== null) {
+      var ts = formatTime(line.timestamp || line.ts);
+      var svc = line.service || line.svc || '';
+      var msg = line.message || line.msg || line.data || '';
+      var isStderr = line.stream === 'stderr';
+      return '<div class="log-line' + (isStderr ? ' stderr' : '') + '">'
+        + '<span class="ts">' + esc(ts) + '</span>'
+        + '<span class="svc ' + esc(svc) + '">' + esc(svc) + '</span>'
+        + '<span class="msg">' + esc(String(msg)) + '</span>'
+        + '</div>';
+    }
+    // Plain string
+    return '<div class="log-line"><span class="msg">' + esc(String(line)) + '</span></div>';
+  }
+
+  function parseLogService(line) {
+    if (typeof line === 'object' && line !== null) {
+      return (line.service || line.svc || '').toLowerCase();
+    }
+    // Try to extract from string: "[agent]" or "[bridge]"
+    var str = String(line);
+    if (str.indexOf('[agent]') !== -1 || str.indexOf('agent') !== -1) return 'agent';
+    if (str.indexOf('[bridge]') !== -1 || str.indexOf('bridge') !== -1) return 'bridge';
+    return '';
+  }
+
+  // --- Services Panel ---
+  function renderServicesPanel() {
+    var statuses = window.app.serviceStatuses || {};
+    var html = '<div class="panel-header">';
+    html += '<h2>Services</h2>';
+    html += '</div>';
+
+    // Agent card
+    html += renderServiceCard('agent', statuses.agent || {});
+
+    // Bridge card
+    html += renderServiceCard('bridge', statuses.bridge || {});
+
+    // Platform toggles
+    html += '<div id="platformToggles">';
+    html += renderPlatformToggles();
+    html += '</div>';
+
+    // Rebuild all button
+    html += '<div style="margin-top: var(--space-md);">';
+    html += '<button class="service-btn danger" id="panelRebuildAllBtn" style="width:100%;">Rebuild &amp; Restart All</button>';
+    html += '</div>';
+
+    return html;
+  }
+
+  function renderServiceCard(name, info) {
+    var status = info.status || 'stopped';
+    var pid = info.pid || '--';
+    var uptime = info.uptime ? formatDuration(info.uptime) : '--';
+
+    var html = '<div class="service-card" id="serviceCard_' + esc(name) + '">';
+    html += '<div class="service-card-header">';
+    html += '<span class="service-card-name">' + esc(name.charAt(0).toUpperCase() + name.slice(1)) + '</span>';
+    html += '<span class="service-status-badge ' + esc(status) + '">' + esc(status) + '</span>';
+    html += '</div>';
+    html += '<div class="service-card-info">PID: ' + esc(String(pid)) + ' &middot; Uptime: ' + esc(uptime) + '</div>';
+    html += '<div class="service-card-actions">';
+
+    if (status === 'running') {
+      html += '<button class="service-btn" onclick="window.app.serviceAction(\'' + esc(name) + '\', \'stop\')">Stop</button>';
+      html += '<button class="service-btn" onclick="window.app.serviceAction(\'' + esc(name) + '\', \'restart\')">Restart</button>';
+    } else {
+      html += '<button class="service-btn" onclick="window.app.serviceAction(\'' + esc(name) + '\', \'start\')">Start</button>';
+    }
+
+    if (name === 'bridge') {
+      html += '<button class="service-btn" onclick="window.app.serviceAction(\'bridge\', \'relink\')">Re-link</button>';
+    }
+
+    html += '</div></div>';
+    return html;
+  }
+
+  function renderPlatformToggles() {
+    // Only render if platform module provides state
+    var platform = window.app.platform;
+    if (!platform || !platform.getState) return '';
+
+    var state = platform.getState();
+    var html = '';
+
+    if (state.whatsapp !== undefined) {
+      html += '<div class="platform-toggle-row">';
+      html += '<span class="platform-toggle-label">WhatsApp</span>';
+      html += '<div class="toggle-switch' + (state.whatsapp ? ' active' : '') + '" data-platform="whatsapp"></div>';
+      html += '</div>';
+    }
+
+    if (state.telegram !== undefined) {
+      html += '<div class="platform-toggle-row">';
+      html += '<span class="platform-toggle-label">Telegram</span>';
+      html += '<div class="toggle-switch' + (state.telegram ? ' active' : '') + '" data-platform="telegram"></div>';
+      html += '</div>';
+    }
+
+    return html;
+  }
+
+  // --- Messages Panel ---
+  function renderMessagesPanel() {
+    var html = '<div class="panel-header">';
+    html += '<h2>Messages</h2>';
+    html += '</div>';
+
+    // Session picker
+    html += '<select class="session-picker" id="panelMessageSessionPicker">';
+    html += '<option value="">Select session...</option>';
+    html += '</select>';
+
+    // Messages container
+    html += '<div class="messages-container" id="panelMessagesContainer">';
+    html += '<div class="panel-empty"><div class="empty-icon">&#x1F4AC;</div>Select a session to view messages</div>';
+    html += '</div>';
+
+    // Load sessions for the picker
+    setTimeout(loadMessageSessionPicker, 0);
+
+    return html;
+  }
+
+  function loadMessageSessionPicker() {
+    fetch('/api/sessions')
+      .then(function (res) { return res.json(); })
+      .then(function (sessions) {
+        var picker = document.getElementById('panelMessageSessionPicker');
+        if (!picker) return;
+
+        for (var i = 0; i < sessions.length; i++) {
+          var s = sessions[i];
+          var opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = s.name || s.id;
+          if (s.id === window.app.activeSessionId) {
+            opt.selected = true;
+          }
+          picker.appendChild(opt);
+        }
+
+        // Auto-load messages for active session
+        if (window.app.activeSessionId) {
+          loadMessages(window.app.activeSessionId);
+        }
+      })
+      .catch(function () { /* fail silently */ });
+  }
+
+  function loadMessages(sessionId) {
+    if (!sessionId) return;
+    var container = document.getElementById('panelMessagesContainer');
+    if (!container) return;
+    container.innerHTML = '<div class="panel-empty">Loading messages...</div>';
+
+    fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/messages?limit=50')
+      .then(function (res) { return res.json(); })
+      .then(function (messages) {
+        var el = document.getElementById('panelMessagesContainer');
+        if (!el) return;
+
+        if (!messages || messages.length === 0) {
+          el.innerHTML = '<div class="panel-empty"><div class="empty-icon">&#x1F4AC;</div>No messages yet</div>';
+          return;
+        }
+
+        var html = '';
+        for (var i = 0; i < messages.length; i++) {
+          var m = messages[i];
+          var direction = m.direction || (m.role === 'assistant' ? 'outgoing' : 'incoming');
+          var text = m.text || m.content || m.message || '';
+          var isTruncated = text.length > 300;
+          var displayText = isTruncated ? text.slice(0, 300) + '...' : text;
+          var source = m.source || m.platform || '';
+          var time = formatTime(m.timestamp || m.createdAt || m.ts);
+
+          html += '<div class="message-bubble ' + esc(direction) + (isTruncated ? ' truncated' : '') + '" data-full-text="' + esc(text) + '">';
+          if (source) {
+            html += '<div class="msg-source">' + esc(source) + '</div>';
+          }
+          html += '<div class="msg-text">' + esc(displayText) + '</div>';
+          html += '<div class="msg-time">' + esc(time) + '</div>';
+          html += '</div>';
+        }
+        el.innerHTML = html;
+      })
+      .catch(function () {
+        var el = document.getElementById('panelMessagesContainer');
+        if (el) {
+          el.innerHTML = '<div class="panel-empty"><div class="empty-icon">!</div>Failed to load messages</div>';
+        }
+      });
+  }
+
+  // --- Audit Panel ---
+  function renderAuditPanel() {
+    var html = '<div class="panel-header">';
+    html += '<h2>Audit</h2>';
+    html += '</div>';
+
+    html += '<div id="panelAuditList"><div class="panel-empty">Loading audit events...</div></div>';
+
+    setTimeout(loadAuditList, 0);
+
+    return html;
+  }
+
+  function loadAuditList() {
+    fetch('/api/audit?limit=100')
+      .then(function (res) { return res.json(); })
+      .then(function (events) {
+        var list = document.getElementById('panelAuditList');
+        if (!list) return;
+
+        if (!events || events.length === 0) {
+          list.innerHTML = '<div class="panel-empty"><div class="empty-icon">&#x1F4DC;</div>No audit events</div>';
+          return;
+        }
+
+        var html = '';
+        for (var i = 0; i < events.length; i++) {
+          var ev = events[i];
+          var isBlocked = ev.blocked || ev.event === 'blocked';
+          var time = formatTime(ev.timestamp || ev.ts || ev.createdAt);
+          var eventName = ev.event || ev.type || '';
+          var detail = ev.detail || ev.message || ev.description || '';
+          var source = ev.source || '';
+
+          html += '<div class="audit-item' + (isBlocked ? ' blocked' : '') + '">';
+          html += '<span class="audit-time">' + esc(time) + '</span>';
+          html += '<span class="audit-event">' + esc(eventName) + '</span>';
+          html += '<span class="audit-detail">' + esc(source ? source + ': ' : '') + esc(detail) + '</span>';
+          html += '</div>';
+        }
+        list.innerHTML = html;
+      })
+      .catch(function () {
+        var list = document.getElementById('panelAuditList');
+        if (list) {
+          list.innerHTML = '<div class="panel-empty"><div class="empty-icon">!</div>Failed to load audit events</div>';
+        }
+      });
+  }
+
+  // --- New Session Panel ---
+  function renderNewSessionPanel() {
+    var html = '<div class="panel-header">';
+    html += '<h2>New Session</h2>';
+    html += '</div>';
+
+    // Recent projects
+    var recent = getRecentProjects();
+    if (recent.length > 0) {
+      html += '<h3 style="font-size:var(--font-ui-sm);color:var(--text-dim);margin-bottom:var(--space-sm);">Recent Projects</h3>';
+      html += '<div class="new-session-panel"><div class="recent-grid">';
+      for (var i = 0; i < recent.length && i < 6; i++) {
+        var r = recent[i];
+        var name = r.name || r.path.split('/').pop() || r.path.split('\\').pop() || 'Project';
+        html += '<div class="recent-project-card" data-path="' + esc(r.path) + '">';
+        html += '<div class="project-name">' + esc(name) + '</div>';
+        html += '<div class="project-path">' + esc(trunc(r.path, 40)) + '</div>';
+        html += '</div>';
+      }
+      html += '</div></div>';
+    }
+
+    // Folder browser
+    html += '<h3 style="font-size:var(--font-ui-sm);color:var(--text-dim);margin-bottom:var(--space-sm);">Browse Folder</h3>';
+    html += '<div class="panel-folder-browser" id="panelFolderBrowser">';
+    html += '<div class="panel-breadcrumbs" id="panelBreadcrumbs"></div>';
+    html += '<div class="panel-folder-list" id="panelFolderList">';
+    html += '<div class="panel-empty">Loading...</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // Session name input
+    html += '<input class="panel-input" id="panelSessionName" type="text" placeholder="Session name (optional)">';
+
+    // Chosen path display
+    html += '<input class="panel-input" id="panelSessionPath" type="text" placeholder="Project path" readonly>';
+
+    // Actions
+    html += '<div class="panel-actions">';
+    html += '<button class="panel-btn" id="panelCancelNewSession">Cancel</button>';
+    html += '<button class="panel-btn primary" id="panelCreateSession">Create</button>';
+    html += '</div>';
+
+    // Load initial folder listing
+    setTimeout(function () { browseTo(getDefaultBrowsePath()); }, 0);
+
+    return html;
+  }
+
+  var currentBrowsePath = '';
+
+  function browseTo(path) {
+    currentBrowsePath = path;
+
+    fetch('/api/browse?path=' + encodeURIComponent(path))
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        renderBreadcrumbs(data.path || path);
+        renderFolderList(data.entries || data.folders || data.items || []);
+
+        // Update path input
+        var pathInput = document.getElementById('panelSessionPath');
+        if (pathInput) pathInput.value = data.path || path;
+      })
+      .catch(function () {
+        var list = document.getElementById('panelFolderList');
+        if (list) {
+          list.innerHTML = '<div class="panel-empty">Failed to browse directory</div>';
+        }
+      });
+  }
+
+  function renderBreadcrumbs(path) {
+    var el = document.getElementById('panelBreadcrumbs');
+    if (!el) return;
+
+    // Split path into parts
+    var separator = path.indexOf('\\') !== -1 ? '\\' : '/';
+    var parts = path.split(/[/\\]/).filter(function (p) { return p; });
+    var html = '';
+
+    // Root
+    html += '<span class="crumb" data-path="' + (separator === '\\' ? 'C:\\' : '/') + '">' + (separator === '\\' ? 'C:\\' : '/') + '</span>';
+
+    var accumulated = separator === '\\' ? '' : '';
+    for (var i = 0; i < parts.length; i++) {
+      accumulated += (i === 0 && separator === '\\' ? '' : separator) + parts[i];
+      var fullPath = separator === '\\' ? parts[0] + '\\' : '/';
+      if (separator === '\\') {
+        fullPath = parts.slice(0, i + 1).join('\\');
+      } else {
+        fullPath = '/' + parts.slice(0, i + 1).join('/');
+      }
+      html += '<span class="sep">' + separator + '</span>';
+      html += '<span class="crumb" data-path="' + esc(fullPath) + '">' + esc(parts[i]) + '</span>';
+    }
+
+    el.innerHTML = html;
+  }
+
+  function renderFolderList(entries) {
+    var el = document.getElementById('panelFolderList');
+    if (!el) return;
+
+    if (!entries || entries.length === 0) {
+      el.innerHTML = '<div class="panel-empty">Empty directory</div>';
+      return;
+    }
+
+    var html = '';
+    // Parent directory link
+    html += '<div class="panel-folder-item" data-path="..">';
+    html += '<span>&#x1F4C1;</span><span>..</span>';
+    html += '</div>';
+
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i];
+      var name = entry.name || entry;
+      var isDir = entry.isDirectory !== undefined ? entry.isDirectory : true;
+      var icon = isDir ? '&#x1F4C1;' : '&#x1F4C4;';
+      var entryPath = entry.path || (currentBrowsePath + '/' + name);
+
+      if (isDir) {
+        html += '<div class="panel-folder-item" data-path="' + esc(entryPath) + '">';
+        html += '<span>' + icon + '</span><span>' + esc(name) + '</span>';
+        html += '</div>';
+      }
+    }
+
+    el.innerHTML = html;
+  }
+
+  function getRecentProjects() {
+    try {
+      var stored = localStorage.getItem('claudeBridge_recentPaths');
+      if (stored) return JSON.parse(stored);
+    } catch (e) { /* ignore */ }
+    return [];
+  }
+
+  function addRecentProject(path, name) {
+    var recent = getRecentProjects();
+    // Remove if exists
+    recent = recent.filter(function (r) { return r.path !== path; });
+    // Add to front
+    recent.unshift({ path: path, name: name || '' });
+    // Limit to 10
+    if (recent.length > 10) recent = recent.slice(0, 10);
+    try {
+      localStorage.setItem('claudeBridge_recentPaths', JSON.stringify(recent));
+    } catch (e) { /* ignore */ }
+  }
+
+  function getDefaultBrowsePath() {
+    // Try to use a recent path, or fall back to home
+    var recent = getRecentProjects();
+    if (recent.length > 0) {
+      // Use parent of most recent
+      var last = recent[0].path;
+      var sep = last.indexOf('\\') !== -1 ? '\\' : '/';
+      var parts = last.split(sep);
+      parts.pop();
+      return parts.join(sep) || (sep === '\\' ? 'C:\\' : '/');
+    }
+    // Default: check if we're on Windows or Unix
+    if (navigator.platform && navigator.platform.indexOf('Win') !== -1) {
+      return 'C:\\Users';
+    }
+    return '/home';
+  }
+
+  // =========================================================================
+  // PANEL EVENT BINDING
+  // =========================================================================
+
+  function bindPanelEvents(panelName) {
+    switch (panelName) {
+      case 'sessions':
+        bindSessionsPanelEvents();
+        break;
+      case 'logs':
+        bindLogsPanelEvents();
+        break;
+      case 'services':
+        bindServicesPanelEvents();
+        break;
+      case 'messages':
+        bindMessagesPanelEvents();
+        break;
+      case 'audit':
+        // No interactive events needed
+        break;
+      case 'newSession':
+        bindNewSessionPanelEvents();
+        break;
+    }
+  }
+
+  function bindSessionsPanelEvents() {
+    // New session button
+    var newBtn = document.getElementById('panelNewSessionBtn');
+    if (newBtn) {
+      newBtn.addEventListener('click', function () {
+        currentPanel = 'newSession';
+        var target = isMobile() ? content : sidebarPanel;
+        target.innerHTML = renderPanel('newSession');
+        bindPanelEvents('newSession');
+      });
+    }
+
+    // Session card clicks (delegated)
+    var target = isMobile() ? content : sidebarPanel;
+    target.addEventListener('click', function (e) {
+      var card = e.target.closest('.session-card');
+      if (!card) return;
+
+      // Check if clicking delete reveal
+      if (e.target.closest('.delete-reveal')) {
+        var deleteId = card.getAttribute('data-session-id');
+        if (deleteId) {
+          fetch('/api/sessions/' + encodeURIComponent(deleteId), { method: 'DELETE' })
+            .then(function () { loadSessionsList(); })
+            .catch(function () { window.app.showToast('Failed to delete session'); });
+        }
+        return;
+      }
+
+      var sessionId = card.getAttribute('data-session-id');
+      if (sessionId) {
+        // Activate session
+        fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/activate', { method: 'POST' })
+          .then(function (res) { return res.json(); })
+          .then(function () {
+            window.app.activeSessionId = sessionId;
+            if (window.app.terminal) {
+              window.app.terminal.switchTo(sessionId);
+            }
+            close();
+          })
+          .catch(function () {
+            window.app.showToast('Failed to activate session');
+          });
+      }
+    });
+  }
+
+  function bindLogsPanelEvents() {
+    // Clear button
+    var clearBtn = document.getElementById('panelClearLogsBtn');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        clearLogs();
+      });
+    }
+
+    // Filter chips (delegated)
+    var target = isMobile() ? content : sidebarPanel;
+    target.addEventListener('click', function (e) {
+      var chip = e.target.closest('.filter-chip');
+      if (!chip) return;
+
+      var filter = chip.getAttribute('data-filter');
+      if (!filter) return;
+
+      logFilter = filter;
+
+      // Update active state on chips
+      var chips = target.querySelectorAll('.filter-chip');
+      for (var i = 0; i < chips.length; i++) {
+        chips[i].classList.toggle('active', chips[i].getAttribute('data-filter') === filter);
+      }
+
+      // Re-render log lines
+      var logScroll = document.getElementById('logScroll');
+      if (logScroll) {
+        logScroll.innerHTML = renderLogLines();
+        logScroll.scrollTop = logScroll.scrollHeight;
+      }
+    });
+  }
+
+  function bindServicesPanelEvents() {
+    // Rebuild all button
+    var rebuildBtn = document.getElementById('panelRebuildAllBtn');
+    if (rebuildBtn) {
+      rebuildBtn.addEventListener('click', function () {
+        if (confirm('Rebuild and restart all services?')) {
+          window.app.serviceAction('agent', 'restart');
+          window.app.serviceAction('bridge', 'restart');
+          window.app.showToast('Restarting all services...');
+        }
+      });
+    }
+
+    // Platform toggle switches (delegated)
+    var target = isMobile() ? content : sidebarPanel;
+    target.addEventListener('click', function (e) {
+      var toggle = e.target.closest('.toggle-switch');
+      if (!toggle) return;
+
+      var platform = toggle.getAttribute('data-platform');
+      if (!platform) return;
+
+      if (window.app.platform && window.app.platform.toggle) {
+        window.app.platform.toggle(platform);
+        toggle.classList.toggle('active');
+      }
+    });
+  }
+
+  function bindMessagesPanelEvents() {
+    // Session picker change
+    var picker = document.getElementById('panelMessageSessionPicker');
+    if (picker) {
+      picker.addEventListener('change', function () {
+        loadMessages(picker.value);
+      });
+    }
+
+    // Message bubble expand on click (delegated)
+    var target = isMobile() ? content : sidebarPanel;
+    target.addEventListener('click', function (e) {
+      var bubble = e.target.closest('.message-bubble.truncated');
+      if (!bubble) return;
+
+      var fullText = bubble.getAttribute('data-full-text');
+      if (fullText) {
+        var textEl = bubble.querySelector('.msg-text');
+        if (textEl) {
+          textEl.textContent = fullText;
+          bubble.classList.remove('truncated');
+        }
+      }
+    });
+  }
+
+  function bindNewSessionPanelEvents() {
+    // Cancel button
+    var cancelBtn = document.getElementById('panelCancelNewSession');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', function () {
+        // Go back to sessions panel
+        currentPanel = 'sessions';
+        var target = isMobile() ? content : sidebarPanel;
+        target.innerHTML = renderPanel('sessions');
+        bindPanelEvents('sessions');
+      });
+    }
+
+    // Create button
+    var createBtn = document.getElementById('panelCreateSession');
+    if (createBtn) {
+      createBtn.addEventListener('click', function () {
+        var nameInput = document.getElementById('panelSessionName');
+        var pathInput = document.getElementById('panelSessionPath');
+        var name = nameInput ? nameInput.value.trim() : '';
+        var path = pathInput ? pathInput.value.trim() : '';
+
+        if (!path) {
+          window.app.showToast('Please select a project folder');
+          return;
+        }
+
+        var body = { projectPath: path };
+        if (name) body.name = name;
+
+        fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (session) {
+            addRecentProject(path, name || session.name);
+            window.app.activeSessionId = session.id;
+            if (window.app.terminal) {
+              window.app.terminal.switchTo(session.id);
+            }
+            window.app.showToast('Session created');
+            close();
+          })
+          .catch(function () {
+            window.app.showToast('Failed to create session');
+          });
+      });
+    }
+
+    // Recent project cards (delegated)
+    var target = isMobile() ? content : sidebarPanel;
+    target.addEventListener('click', function (e) {
+      var card = e.target.closest('.recent-project-card');
+      if (card) {
+        var path = card.getAttribute('data-path');
+        if (path) {
+          var pathInput = document.getElementById('panelSessionPath');
+          if (pathInput) pathInput.value = path;
+          browseTo(path);
+        }
+        return;
+      }
+
+      // Breadcrumb clicks
+      var crumb = e.target.closest('.crumb');
+      if (crumb) {
+        var crumbPath = crumb.getAttribute('data-path');
+        if (crumbPath) browseTo(crumbPath);
+        return;
+      }
+
+      // Folder item clicks
+      var folderItem = e.target.closest('.panel-folder-item');
+      if (folderItem) {
+        var folderPath = folderItem.getAttribute('data-path');
+        if (folderPath === '..') {
+          // Go up
+          var sep = currentBrowsePath.indexOf('\\') !== -1 ? '\\' : '/';
+          var parts = currentBrowsePath.split(sep);
+          parts.pop();
+          var parentPath = parts.join(sep) || (sep === '\\' ? 'C:\\' : '/');
+          browseTo(parentPath);
+        } else if (folderPath) {
+          browseTo(folderPath);
+          // Auto-select this as the project path
+          var pathInput = document.getElementById('panelSessionPath');
+          if (pathInput) pathInput.value = folderPath;
+        }
+        return;
+      }
+    });
+  }
+
+  // =========================================================================
+  // LOG MANAGEMENT
+  // =========================================================================
+
+  function appendLog(line) {
+    logBuffer.push(line);
+    if (logBuffer.length > LOG_BUFFER_MAX) {
+      logBuffer.shift();
+    }
+
+    // If logs panel is open, append the line to the DOM
+    if (currentPanel === 'logs') {
+      var logScroll = document.getElementById('logScroll');
+      if (!logScroll) return;
+
+      // Check filter
+      if (logFilter !== 'all') {
+        var svc = parseLogService(line);
+        if (svc !== logFilter) return;
+      }
+
+      // Remove empty state if present
+      var empty = logScroll.querySelector('.panel-empty');
+      if (empty) empty.remove();
+
+      var lineHtml = renderLogLine(line);
+      var div = document.createElement('div');
+      div.innerHTML = lineHtml;
+      var lineEl = div.firstChild;
+      logScroll.appendChild(lineEl);
+
+      // Auto-scroll to bottom
+      logScroll.scrollTop = logScroll.scrollHeight;
+    }
+  }
+
+  function clearLogs() {
+    logBuffer = [];
+
+    var logScroll = document.getElementById('logScroll');
+    if (logScroll) {
+      logScroll.innerHTML = '<div class="panel-empty">No logs yet</div>';
+    }
+  }
+
+  // =========================================================================
+  // SERVICE UPDATES
+  // =========================================================================
+
+  function updateService(name, info) {
+    if (currentPanel !== 'services') return;
+
+    var card = document.getElementById('serviceCard_' + name);
+    if (!card) return;
+
+    // Re-render just this service card
+    card.outerHTML = renderServiceCard(name, info);
+  }
+
+  // =========================================================================
+  // DESKTOP SIDEBAR
+  // =========================================================================
+
+  // Sidebar button clicks
+  if (sidebar) {
+    var sidebarBtns = sidebar.querySelectorAll('.sidebar-btn[data-panel]');
+    for (var i = 0; i < sidebarBtns.length; i++) {
+      (function (btn) {
+        btn.addEventListener('click', function () {
+          var panelName = btn.getAttribute('data-panel');
+          if (panelName) toggle(panelName);
+        });
+      })(sidebarBtns[i]);
+    }
+  }
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', function (e) {
+    // Don't capture if typing in an input
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+      if (e.key === 'Escape' && currentPanel) {
+        close();
+        e.preventDefault();
+      }
+      return;
+    }
+
+    // `[` toggles sidebar
+    if (e.key === '[') {
+      if (currentPanel) {
+        close();
+      } else {
+        open('sessions');
+      }
+      e.preventDefault();
+      return;
+    }
+
+    // `Escape` closes panel
+    if (e.key === 'Escape' && currentPanel) {
+      close();
+      e.preventDefault();
+      return;
+    }
+
+    // `1`-`5` open panels by index
+    var PANEL_KEYS = { '1': 'sessions', '2': 'logs', '3': 'services', '4': 'messages', '5': 'audit' };
+    if (PANEL_KEYS[e.key]) {
+      toggle(PANEL_KEYS[e.key]);
+      e.preventDefault();
+      return;
+    }
+  });
+
+  // =========================================================================
+  // PANEL LAUNCHER (mobile)
+  // =========================================================================
+
+  var launcher = document.getElementById('panelLauncher');
+  if (launcher) {
+    var launchBtns = launcher.querySelectorAll('.panel-launch-btn[data-panel]');
+    for (var j = 0; j < launchBtns.length; j++) {
+      (function (btn) {
+        btn.addEventListener('click', function () {
+          var panelName = btn.getAttribute('data-panel');
+          if (panelName) {
+            launcher.classList.remove('open');
+            open(panelName);
+          }
+        });
+      })(launchBtns[j]);
+    }
+  }
+
+  // =========================================================================
+  // PUBLIC API
+  // =========================================================================
+
+  window.app.panels = {
+    open: open,
+    close: close,
+    toggle: toggle,
+    isOpen: isOpen,
+    appendLog: appendLog,
+    clearLogs: clearLogs,
+    updateService: updateService,
+    renderSessionsPanel: renderSessionsPanel,
+    renderLogsPanel: renderLogsPanel,
+    renderServicesPanel: renderServicesPanel,
+    renderMessagesPanel: renderMessagesPanel,
+    renderAuditPanel: renderAuditPanel,
+    renderNewSessionPanel: renderNewSessionPanel
+  };
+
+})();
