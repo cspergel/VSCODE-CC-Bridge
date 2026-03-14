@@ -41,8 +41,20 @@ export class PtyWrapper extends EventEmitter {
       name: "xterm-256color",
       cwd: opts.cwd,
       env: (() => {
-        const { CLAUDECODE, ...clean } = process.env;
-        return { ...clean, ...opts.env };
+        // Strip env vars that cause issues:
+        // - CLAUDECODE: prevents nested session error
+        // - EDITOR/VISUAL: prevents Claude Code from launching VS Code
+        // - TERM_PROGRAM/VSCODE_*: prevents Claude Code from detecting VS Code
+        const clean: Record<string, string> = {};
+        for (const [k, v] of Object.entries(process.env)) {
+          if (v === undefined) continue;
+          if (k === "CLAUDECODE") continue;
+          if (k === "EDITOR" || k === "VISUAL") continue;
+          if (k === "TERM_PROGRAM" && v.toLowerCase().includes("vscode")) continue;
+          if (k.startsWith("VSCODE_")) continue;
+          clean[k] = v;
+        }
+        return { ...clean, TERM_PROGRAM: "xterm-256color", ...opts.env };
       })() as Record<string, string>,
       cols: 120,
       rows: 40,
