@@ -82,12 +82,14 @@
     min-height: 0;
     position: relative;
     overflow: hidden;
-    padding-bottom: var(--tabbar-h);
   }
 
   .view {
     position: absolute;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: var(--tabbar-h);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }

@@ -53,13 +53,14 @@ export class WhatsAppClient extends EventEmitter {
       logger: {
         level: "error",
         info: () => {}, debug: () => {}, trace: () => {},
-        warn: (...args: unknown[]) => {
-          // Suppress Baileys crypto session dumps
-          const first = String(args[0] ?? "");
-          if (first.includes("session") || first.includes("Session") || typeof args[0] === "object") return;
-          console.warn(...args);
+        warn: () => {}, // Suppress all Baileys warnings (crypto session dumps, etc.)
+        error: (...args: unknown[]) => {
+          // Suppress Signal protocol session/crypto noise
+          const msg = String(args[0] ?? "");
+          if (msg.includes("session") || msg.includes("Session") || msg.includes("PreKey")
+            || msg.includes("SenderKey") || msg.includes("Closing") || typeof args[0] === "object") return;
+          console.error("[baileys]", ...args);
         },
-        error: console.error,
         child: function() { return this; },
       } as any,
     });

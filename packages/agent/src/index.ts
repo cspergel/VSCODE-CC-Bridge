@@ -76,7 +76,19 @@ async function main() {
     process.on("message", (msg: any) => {
       if (msg.type === "pty_input" && msg.sessionId) {
         const pty = ptySessions.get(msg.sessionId);
-        if (pty) pty.write(msg.data);
+        if (pty) {
+          const data = msg.data as string;
+          // If data is bulk text ending with Enter (from input bar send button),
+          // split text and Enter with a delay so Claude Code's TUI processes them separately.
+          // Single keystrokes (from xterm.js typing) pass through unchanged.
+          if (data.length > 1 && (data.endsWith("\r") || data.endsWith("\n"))) {
+            const text = data.slice(0, -1);
+            pty.write(text);
+            setTimeout(() => pty.write("\r"), 150);
+          } else {
+            pty.write(data);
+          }
+        }
       } else if (msg.type === "pty_resize" && msg.sessionId) {
         const pty = ptySessions.get(msg.sessionId);
         const cols = Math.max(1, Math.floor(msg.cols || 80));

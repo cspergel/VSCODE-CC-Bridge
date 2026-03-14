@@ -798,7 +798,9 @@
     if (!activeSessionId) return;
     var entry = terminals.get(activeSessionId);
     if (entry) {
+      allowXtermFocus = true;
       entry.term.focus();
+      setTimeout(function () { allowXtermFocus = false; }, 200);
       setTimeout(fitActive, 50);
     }
   }
@@ -817,13 +819,39 @@
   }
 
   /**
-   * setupTermBlurDetection()
-   * Watches for xterm's internal textarea losing focus (keyboard dismissed)
-   * and removes the term-focused class accordingly.
+   * setupTermFocusRedirect()
+   * On mobile, intercepts focus on xterm's internal helper textarea and
+   * redirects to the command bar. This ensures voice dictation and keyboard
+   * input always go through the command bar (avoids speech-to-text duplication).
    */
-  function setupTermBlurDetection() {
-    // No longer needed for term-focused class management,
-    // but kept as a hook point for future blur detection needs.
+  var allowXtermFocus = false; // flag to permit intentional xterm focus
+
+  function setupTermFocusRedirect() {
+    if (window.innerWidth > 768) return; // desktop only — no redirect needed
+
+    document.addEventListener('focusin', function (e) {
+      if (allowXtermFocus) return;
+      // Detect xterm's internal helper textarea
+      if (e.target && e.target.classList && e.target.classList.contains('xterm-helper-textarea')) {
+        e.target.blur();
+        // Open command bar and focus input instead
+        if (!keyboardActive) {
+          keyboardActive = true;
+          var btn = document.getElementById('termKeyboardBtn');
+          if (btn) btn.classList.add('active');
+        }
+        var appEl = document.getElementById('app');
+        if (appEl && !appEl.classList.contains('command-bar-visible')) {
+          appEl.classList.add('command-bar-visible');
+          if (window.app) window.app.commandBarVisible = true;
+        }
+        var input = document.getElementById('commandInput');
+        if (input) {
+          setTimeout(function () { input.focus(); }, 50);
+        }
+        setTimeout(fitActive, 100);
+      }
+    });
   }
 
   /**
@@ -911,7 +939,7 @@
   function init() {
     setupTouchHandlers();
     setupResizeObserver();
-    setupTermBlurDetection();
+    setupTermFocusRedirect();
     setupFontControls();
     setupSelectMode();
     setupKeyboardToggle();

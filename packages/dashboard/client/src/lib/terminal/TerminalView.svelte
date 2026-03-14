@@ -4,11 +4,12 @@
   import QuickActions from './QuickActions.svelte';
   import TerminalControls from './TerminalControls.svelte';
   import { activeSessionId } from '../stores/sessions.js';
-  import { terminalData } from '../stores/terminal.js';
+  import { terminalData, terminalInstances } from '../stores/terminal.js';
   import { onMessage } from '../stores/websocket.js';
   import { onMount } from 'svelte';
 
   let context = $state('idle');
+  let choices = $state([]);
   let knownSessions = $state(new Set());
 
   // Track sessions that have sent terminal data
@@ -17,20 +18,98 @@
     knownSessions = new Set(dataMap.keys());
   });
 
-  // Context detection from terminal output
+  // Parse numbered choices from terminal buffer
+  function parseChoicesFromBuffer(sessionId) {
+    const entry = terminalInstances.get(sessionId);
+    if (!entry) return [];
+    const buffer = entry.term.buffer.active;
+    const lines = [];
+    // Read last 30 lines from cursor
+    const start = Math.max(0, buffer.cursorY - 30);
+    for (let i = start; i <= buffer.cursorY; i++) {
+      const line = buffer.getLine(i);
+      if (line) lines.push(line.translateToString().trim());
+    }
+    const parsed = [];
+    const re = /^(\d+)[.)]\s+(.+)/;
+    for (const line of lines) {
+      const m = line.match(re);
+      if (m) {
+        parsed.push({ num: m[1], label: m[2].slice(0, 40) });
+      }
+    }
+    return parsed;
+  }
+
+  // Compare choice arrays to avoid unnecessary re-renders
+  let lastChoicesKey = '';
+  function choicesChanged(newChoices) {
+    const key = newChoices.map(c => c.num).join(',');
+    if (key === lastChoicesKey) return false;
+    lastChoicesKey = key;
+    return true;
+  }
+
+  // Context detection — debounced, only runs after output stops for 800ms
+  let contextTimer = null;
+  let lastContext = '';
+
+  function detectContextFromBuffer(sessionId) {
+    const entry = terminalInstances.get(sessionId);
+    if (!entry) return;
+    const buffer = entry.term.buffer.active;
+
+    // Read last 3 lines for context clues
+    const recentLines = [];
+    for (let i = Math.max(0, buffer.cursorY - 3); i <= buffer.cursorY; i++) {
+      const line = buffer.getLine(i);
+      if (line) recentLines.push(line.translateToString());
+    }
+    const recent = recentLines.join('\n');
+
+    let newContext = 'running';
+    let newChoices = [];
+
+    if (/\[Y\/n\]|\(y\/N\)|Allow|Approve|Confirm.*\?/i.test(recent)) {
+      newContext = 'approval';
+    } else if (/[●◯◉].*│|❯.*│/.test(recent)) {
+      newContext = 'picker';
+    } else if (/[❯$>]\s*$/.test(recent)) {
+      newContext = 'idle';
+    }
+
+    // Only check for numbered choices when idle (output finished, prompt showing)
+    if (newContext === 'idle') {
+      const parsed = parseChoicesFromBuffer(sessionId);
+      if (parsed.length >= 2 && parsed.length <= 20) {
+        newContext = 'choices';
+        newChoices = parsed;
+      }
+    }
+
+    // Only update state if something actually changed
+    if (newContext !== lastContext) {
+      lastContext = newContext;
+      context = newContext;
+    }
+    if (newContext === 'choices') {
+      if (choicesChanged(newChoices)) {
+        choices = newChoices;
+      }
+    } else if (choices.length > 0) {
+      choices = [];
+      lastChoicesKey = '';
+    }
+  }
+
   onMount(() => {
     return onMessage('terminal_data', (data) => {
       if (data.sessionId !== $activeSessionId) return;
-      const text = data.data;
-      if (/\[Y\/n\]|\(y\/N\)|Allow|Approve|Confirm.*\?/i.test(text)) {
-        context = 'approval';
-      } else if (/[●◯◉].*│|❯.*│/.test(text)) {
-        context = 'picker';
-      } else if (/[❯$>]\s*$/.test(text)) {
-        context = 'idle';
-      } else {
-        context = 'running';
-      }
+      // Debounce: wait 800ms after last data chunk to detect context
+      if (contextTimer) clearTimeout(contextTimer);
+      contextTimer = setTimeout(() => {
+        detectContextFromBuffer(data.sessionId);
+      }, 800);
     });
   });
 </script>
@@ -52,7 +131,7 @@
     <TerminalControls />
   </div>
 
-  <QuickActions {context} />
+  <QuickActions {context} {choices} />
   <InputBar />
 </div>
 

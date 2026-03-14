@@ -33,7 +33,8 @@ function loadConfig(): Config {
 }
 
 // Platform pause state (controlled by dashboard via IPC)
-const platformPaused: Record<string, boolean> = { whatsapp: false, telegram: false };
+// Start paused by default — dashboard will send unpause when user enables
+const platformPaused: Record<string, boolean> = { whatsapp: true, telegram: true };
 const pauseQueues: Record<string, Array<{ send: () => Promise<void> }>> = { whatsapp: [], telegram: [] };
 
 // Listen for pause/unpause from dashboard

@@ -71,7 +71,7 @@
 
     // Slide up panel — sessions/newSession open at 85% (near fullscreen) for easier browsing
     container.classList.add('open');
-    var snapHeight = (panelName === 'sessions' || panelName === 'newSession') ? '85vh' : '50vh';
+    var snapHeight = (panelName === 'sessions' || panelName === 'newSession' || panelName === 'settings') ? '85vh' : '50vh';
     container.style.transform = 'translateY(calc(100% - ' + snapHeight + '))';
   }
 
@@ -371,6 +371,7 @@
       case 'messages':  return renderMessagesPanel();
       case 'audit':     return renderAuditPanel();
       case 'newSession': return renderNewSessionPanel();
+      case 'settings':  return renderSettingsPanel();
       default:          return '<div class="panel-empty"><div class="empty-icon">?</div>Unknown panel</div>';
     }
   }
@@ -576,6 +577,102 @@
       html += '<div class="toggle-switch' + (state.telegram ? ' active' : '') + '" data-platform="telegram"></div>';
       html += '</div>';
     }
+
+    return html;
+  }
+
+  // --- Settings Panel ---
+  function renderSettingsPanel() {
+    var currentDir = getProjectsDir();
+    var html = renderPanelHeader('Settings');
+
+    html += '<div style="padding:var(--space-md);">';
+
+    // Projects directory setting
+    html += '<div style="margin-bottom:var(--space-lg);">';
+    html += '<label style="display:block;font-size:var(--font-ui-sm);color:var(--text-dim);margin-bottom:var(--space-xs);">Default Projects Folder</label>';
+    html += '<div style="display:flex;gap:var(--space-xs);">';
+    html += '<input class="panel-input" id="settingsProjectsDir" type="text" placeholder="e.g. C:\\Users\\you\\Projects" value="' + esc(currentDir) + '" style="flex:1;">';
+    html += '<button class="panel-btn primary" id="settingsSaveDir" style="white-space:nowrap;">Save</button>';
+    html += '</div>';
+    html += '<div style="font-size:0.8em;color:var(--text-dim);margin-top:var(--space-xs);">The folder browser will start here when creating new sessions.</div>';
+    html += '</div>';
+
+    // Quick-pick common paths
+    html += '<div style="margin-bottom:var(--space-lg);">';
+    html += '<label style="display:block;font-size:var(--font-ui-sm);color:var(--text-dim);margin-bottom:var(--space-xs);">Quick Pick</label>';
+    html += '<div id="settingsQuickPicks" style="display:flex;flex-wrap:wrap;gap:var(--space-xs);"></div>';
+    html += '</div>';
+
+    html += '</div>';
+
+    // Load quick-pick suggestions from the home directory
+    setTimeout(function () {
+      var input = document.getElementById('settingsProjectsDir');
+      var saveBtn = document.getElementById('settingsSaveDir');
+      var quickPicks = document.getElementById('settingsQuickPicks');
+
+      if (saveBtn) {
+        saveBtn.addEventListener('click', function () {
+          var val = input ? input.value.trim() : '';
+          if (!val) {
+            if (window.app.showToast) window.app.showToast('Enter a folder path');
+            return;
+          }
+          // Validate via API
+          fetch('/api/browse?path=' + encodeURIComponent(val))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              if (data.error) {
+                if (window.app.showToast) window.app.showToast('Invalid path: ' + data.error);
+                return;
+              }
+              var resolved = data.current || val;
+              setProjectsDir(resolved);
+              if (input) input.value = resolved;
+              if (window.app.showToast) window.app.showToast('Default folder saved!');
+            })
+            .catch(function () {
+              if (window.app.showToast) window.app.showToast('Could not validate path');
+            });
+        });
+      }
+
+      // Fetch home directory contents for quick picks
+      if (quickPicks) {
+        fetch('/api/browse?path=~')
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data.entries) return;
+            var picks = data.entries.filter(function (e) {
+              var n = e.name.toLowerCase();
+              return n.indexOf('project') !== -1 || n.indexOf('code') !== -1 ||
+                     n.indexOf('coding') !== -1 || n.indexOf('repos') !== -1 ||
+                     n.indexOf('dev') !== -1 || n.indexOf('src') !== -1 ||
+                     n.indexOf('workspace') !== -1 || n.indexOf('github') !== -1 ||
+                     n === 'documents' || n === 'desktop';
+            });
+            if (picks.length === 0) picks = data.entries.slice(0, 6);
+
+            var html2 = '';
+            for (var i = 0; i < picks.length; i++) {
+              html2 += '<button class="panel-btn" data-path="' + esc(picks[i].path) + '" style="font-size:0.85em;">';
+              html2 += (picks[i].isGitRepo ? '&#x1F4E6; ' : '&#x1F4C1; ') + esc(picks[i].name);
+              html2 += '</button>';
+            }
+            quickPicks.innerHTML = html2;
+
+            // Bind quick pick clicks
+            quickPicks.addEventListener('click', function (ev) {
+              var btn = ev.target.closest('[data-path]');
+              if (!btn) return;
+              var path = btn.getAttribute('data-path');
+              if (input) input.value = path;
+            });
+          })
+          .catch(function () { /* ignore */ });
+      }
+    }, 0);
 
     return html;
   }
@@ -868,7 +965,19 @@
     if (!el) return;
 
     if (!entries || entries.length === 0) {
-      el.innerHTML = '<div class="panel-empty">Empty directory</div>';
+      // Still show "Use this folder" and parent nav even when empty
+      var emptyHtml = '';
+      emptyHtml += '<div class="panel-folder-item use-folder" data-action="use-current">';
+      emptyHtml += '<span class="folder-icon" style="color:var(--accent);">&#x2713;</span>';
+      emptyHtml += '<span class="folder-name" style="color:var(--accent);font-weight:600;">Use this folder</span>';
+      emptyHtml += '</div>';
+      emptyHtml += '<div class="panel-folder-item" data-path="..">';
+      emptyHtml += '<span class="folder-icon">&#x1F4C1;</span>';
+      emptyHtml += '<span class="folder-name">..</span>';
+      emptyHtml += '<span class="folder-chevron">&#x203A;</span>';
+      emptyHtml += '</div>';
+      emptyHtml += '<div class="panel-empty">No subfolders</div>';
+      el.innerHTML = emptyHtml;
       return;
     }
 
@@ -877,6 +986,13 @@
     html += '<div class="panel-folder-item use-folder" data-action="use-current">';
     html += '<span class="folder-icon" style="color:var(--accent);">&#x2713;</span>';
     html += '<span class="folder-name" style="color:var(--accent);font-weight:600;">Use this folder</span>';
+    html += '</div>';
+
+    // "Set as default" button — pin this directory as the default browse root
+    var isDefault = currentBrowsePath === getProjectsDir();
+    html += '<div class="panel-folder-item" data-action="set-default" style="opacity:' + (isDefault ? '0.5' : '1') + ';">';
+    html += '<span class="folder-icon" style="color:var(--warning);">&#x2606;</span>';
+    html += '<span class="folder-name" style="color:var(--text-dim);font-size:0.85em;">' + (isDefault ? 'Default folder &#x2713;' : 'Set as default folder') + '</span>';
     html += '</div>';
 
     // Parent directory link
@@ -927,21 +1043,30 @@
   }
 
   function getDefaultBrowsePath() {
-    // Try to use a recent path, or fall back to home
+    // 1. User-configured projects directory (set during onboarding or settings)
+    var configured = localStorage.getItem('claudeBridge_projectsDir');
+    if (configured) return configured;
+
+    // 2. Parent of most recent project
     var recent = getRecentProjects();
     if (recent.length > 0) {
-      // Use parent of most recent
       var last = recent[0].path;
       var sep = last.indexOf('\\') !== -1 ? '\\' : '/';
       var parts = last.split(sep);
       parts.pop();
       return parts.join(sep) || (sep === '\\' ? 'C:\\' : '/');
     }
-    // Default: check if we're on Windows or Unix
-    if (navigator.platform && navigator.platform.indexOf('Win') !== -1) {
-      return 'C:\\Users';
-    }
-    return '/home';
+
+    // 3. Fall back to user's home directory (API resolves ~ or homedir)
+    return '~';
+  }
+
+  function setProjectsDir(path) {
+    localStorage.setItem('claudeBridge_projectsDir', path);
+  }
+
+  function getProjectsDir() {
+    return localStorage.getItem('claudeBridge_projectsDir') || '';
   }
 
   // =========================================================================
@@ -1231,6 +1356,16 @@
         return;
       }
 
+      // "Set as default folder" action
+      var setDefault = e.target.closest('[data-action="set-default"]');
+      if (setDefault) {
+        setProjectsDir(currentBrowsePath);
+        if (window.app.showToast) window.app.showToast('Default folder: ' + currentBrowsePath);
+        // Re-render to update the button state
+        renderFolderList(cachedFolderEntries);
+        return;
+      }
+
       // "Use this folder" action
       var useCurrent = e.target.closest('[data-action="use-current"]');
       if (useCurrent) {
@@ -1434,7 +1569,9 @@
     renderServicesPanel: renderServicesPanel,
     renderMessagesPanel: renderMessagesPanel,
     renderAuditPanel: renderAuditPanel,
-    renderNewSessionPanel: renderNewSessionPanel
+    renderNewSessionPanel: renderNewSessionPanel,
+    setProjectsDir: setProjectsDir,
+    getProjectsDir: getProjectsDir
   };
 
 })();

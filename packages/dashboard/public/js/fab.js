@@ -279,9 +279,15 @@
         toggleMessaging();
         break;
 
+      case 'settings':
+        closeMenu();
+        if (window.app.panels && window.app.panels.open) {
+          window.app.panels.open('settings');
+        }
+        break;
+
       case 'more':
         closeMenu();
-        // Open panel system — show sessions as default entry point
         if (window.app.panels && window.app.panels.open) {
           window.app.panels.open('services');
         }

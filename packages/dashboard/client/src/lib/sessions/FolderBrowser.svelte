@@ -1,5 +1,7 @@
 <script>
   import { haptic } from '../utils/haptics.js';
+  import { projectsDir, recentPaths } from '../stores/preferences.js';
+  import { get } from 'svelte/store';
 
   let { onSelect } = $props();
   let currentPath = $state('');
@@ -49,11 +51,24 @@
     onSelect?.(seg.path);
   }
 
-  // Start browsing
+  // Start browsing — use configured projects dir, then recent path parent, then home
   import { onMount } from 'svelte';
   onMount(() => {
-    const startPath = navigator.platform?.includes('Win') ? 'C:\\Users' : '/home';
-    browseTo(startPath);
+    const configured = get(projectsDir);
+    if (configured) {
+      browseTo(configured);
+      return;
+    }
+    const recent = get(recentPaths);
+    if (recent.length > 0) {
+      const last = recent[0].path;
+      const sep = last.includes('\\') ? '\\' : '/';
+      const parts = last.split(sep);
+      parts.pop();
+      browseTo(parts.join(sep) || (sep === '\\' ? 'C:\\' : '/'));
+      return;
+    }
+    browseTo('~');
   });
 </script>
 
@@ -91,7 +106,7 @@
     {/each}
 
     {#if filtered.length === 0 && !loading}
-      <div class="empty">No folders found</div>
+      <div class="empty">No subfolders here</div>
     {/if}
   </div>
 </div>

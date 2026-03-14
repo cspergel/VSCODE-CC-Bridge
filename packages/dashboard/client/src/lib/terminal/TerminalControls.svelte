@@ -197,6 +197,15 @@
     lastPinchScale = Math.max(0.5, Math.min(2.5, lastPinchScale));
   }
 
+  // Focus the InputBar input (not xterm) for typing/dictation
+  function focusInputBar() {
+    haptic('light');
+    const input = document.querySelector('.input-bar input');
+    if (input) {
+      input.focus();
+    }
+  }
+
   function onPinchTouchEndTracked() {
     if (!isPinching) return;
     isPinching = false;
@@ -225,6 +234,11 @@
     </div>
   </div>
 {/if}
+
+<!-- Floating "Type" pill to focus input bar -->
+<button class="type-pill" onclick={focusInputBar} title="Type a command">
+  &#x2328; Type
+</button>
 
 <!-- Control buttons -->
 <div class="terminal-controls">
@@ -391,12 +405,45 @@
     flex-shrink: 0;
   }
 
+  /* Floating "Type" pill */
+  .type-pill {
+    position: absolute;
+    bottom: var(--s3);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-controls);
+    background: rgba(22, 27, 34, 0.9);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--r-full);
+    padding: var(--s2) var(--s5);
+    font-size: var(--text-sm);
+    font-family: var(--font-sans);
+    font-weight: 500;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    -webkit-tap-highlight-color: transparent;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+  .type-pill:active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
   /* Only show on mobile-width screens */
   @media (min-width: 769px) {
     .terminal-controls {
       display: none;
     }
     .select-overlay {
+      display: none;
+    }
+    .type-pill {
       display: none;
     }
   }

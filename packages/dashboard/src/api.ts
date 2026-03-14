@@ -133,7 +133,11 @@ export function createApiRouter(pm: ProcessManager, db: Database): Router {
   // Folder browser
   router.get("/browse", (req: Request, res: Response) => {
     try {
-      const raw = (req.query.path as string) || homedir();
+      let raw = (req.query.path as string) || homedir();
+      // Expand ~ to home directory
+      if (raw === "~" || raw.startsWith("~/") || raw.startsWith("~\\")) {
+        raw = raw.replace(/^~/, homedir());
+      }
       const current = resolve(raw);
 
       if (!existsSync(current)) {
@@ -251,6 +255,27 @@ export function createApiRouter(pm: ProcessManager, db: Database): Router {
       // Bridge might not be running
     }
     res.json({ platform: name, paused: platformPaused[name] });
+  });
+
+  // Settings (persisted in localStorage on client, but server provides defaults)
+  let serverProjectsDir = "";
+
+  router.get("/settings", (_req: Request, res: Response) => {
+    res.json({ projectsDir: serverProjectsDir });
+  });
+
+  router.post("/settings", express.json(), (req: Request, res: Response) => {
+    const { projectsDir } = req.body;
+    if (projectsDir !== undefined) {
+      // Validate path exists
+      const resolved = resolve(projectsDir.replace(/^~/, homedir()));
+      if (!existsSync(resolved)) {
+        res.status(400).json({ error: "Directory does not exist: " + resolved });
+        return;
+      }
+      serverProjectsDir = resolved;
+    }
+    res.json({ projectsDir: serverProjectsDir });
   });
 
   // Health check

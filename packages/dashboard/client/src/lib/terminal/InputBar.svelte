@@ -125,9 +125,9 @@
     display: flex;
     align-items: center;
     gap: var(--s2);
-    padding: var(--s2) var(--s3);
+    padding: var(--s3) var(--s3);
     background: var(--surface);
-    border-top: 1px solid var(--border);
+    border-top: 2px solid var(--border);
     flex-shrink: 0;
     will-change: transform;
     transition: transform 0.1s ease-out;
@@ -137,12 +137,12 @@
     flex: 1;
     background: var(--bg);
     color: var(--text);
-    border: 1px solid var(--border);
+    border: 2px solid var(--border);
     border-radius: var(--r-md);
-    padding: var(--s2) var(--s3);
+    padding: var(--s3) var(--s3);
     font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    min-height: 40px;
+    font-size: 16px;
+    min-height: 48px;
     outline: none;
     -webkit-appearance: none;
   }
@@ -156,8 +156,8 @@
   }
 
   .send-btn {
-    width: 40px;
-    height: 40px;
+    width: 48px;
+    height: 48px;
     border-radius: var(--r-md);
     background: var(--accent);
     color: #fff;
