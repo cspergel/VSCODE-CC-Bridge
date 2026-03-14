@@ -1,0 +1,71 @@
+/* Terminal — xterm overrides, touch handling, fullscreen */
+
+#terminalContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.term-pane {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: none;
+  touch-action: manipulation;
+}
+
+.term-pane.active {
+  display: block;
+}
+
+/* xterm.js overrides */
+.term-pane .xterm {
+  height: 100%;
+  padding: var(--space-xs);
+}
+
+.term-pane .xterm-viewport {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Fullscreen terminal: stretches to fill */
+.app-container.fullscreen .terminal-viewport {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-terminal);
+}
+
+/* Terminal zoom overlay (double-tap zoom) */
+.term-zoom-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 2;
+  transform-origin: center;
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.term-zoom-overlay.zoomed {
+  transform: scale(1.5);
+}
+
+/* Copy toast after long-press select */
+.copy-toast {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-xs) var(--space-md);
+  color: var(--text);
+  font-size: var(--font-ui-sm);
+  z-index: 10;
+  pointer-events: none;
+}
