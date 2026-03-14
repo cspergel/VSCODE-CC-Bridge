@@ -15,14 +15,12 @@
   const TAB_ORDER = ['terminal', 'sessions', 'activity', 'settings'];
 
   let activeTab = $state('terminal');
-  let prevTabIndex = $state(0);
   let slideDirection = $state(1); // 1 = right, -1 = left
 
   function handleSwitch(tab) {
     const newIndex = TAB_ORDER.indexOf(tab);
     const oldIndex = TAB_ORDER.indexOf(activeTab);
     slideDirection = newIndex > oldIndex ? 1 : -1;
-    prevTabIndex = oldIndex;
     activeTab = tab;
   }
 

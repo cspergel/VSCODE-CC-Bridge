@@ -31,9 +31,9 @@
     termAreaEl = document.querySelector('.terminal-area');
     if (termAreaEl) {
       termAreaEl.addEventListener('touchstart', onPinchTouchStart, { passive: true });
-      termAreaEl.addEventListener('touchmove', onPinchTouchMove, { passive: true });
-      termAreaEl.addEventListener('touchend', onPinchTouchEnd, { passive: true });
-      termAreaEl.addEventListener('touchcancel', onPinchTouchEnd, { passive: true });
+      termAreaEl.addEventListener('touchmove', onPinchTouchMoveTracked, { passive: true });
+      termAreaEl.addEventListener('touchend', onPinchTouchEndTracked, { passive: true });
+      termAreaEl.addEventListener('touchcancel', onPinchTouchEndTracked, { passive: true });
     }
 
     // Poll scroll position to show/hide scroll buttons
@@ -43,9 +43,9 @@
   onDestroy(() => {
     if (termAreaEl) {
       termAreaEl.removeEventListener('touchstart', onPinchTouchStart);
-      termAreaEl.removeEventListener('touchmove', onPinchTouchMove);
-      termAreaEl.removeEventListener('touchend', onPinchTouchEnd);
-      termAreaEl.removeEventListener('touchcancel', onPinchTouchEnd);
+      termAreaEl.removeEventListener('touchmove', onPinchTouchMoveTracked);
+      termAreaEl.removeEventListener('touchend', onPinchTouchEndTracked);
+      termAreaEl.removeEventListener('touchcancel', onPinchTouchEndTracked);
     }
     if (scrollInterval) clearInterval(scrollInterval);
   });
@@ -189,30 +189,7 @@
     pinchStartFontSize = $fontSize || 14;
   }
 
-  function onPinchTouchMove(e) {
-    if (!isPinching || e.touches.length < 2) return;
-    // Visual feedback could go here; actual resize happens on end
-  }
-
-  function onPinchTouchEnd(e) {
-    if (!isPinching) return;
-    if (e.touches && e.touches.length >= 2) return; // Still has fingers
-
-    // Calculate final scale from the last known positions
-    const changedTouches = e.changedTouches;
-    if (changedTouches && changedTouches.length > 0 && pinchStartDist > 0) {
-      // Use last touch positions to estimate scale
-      // For a more accurate approach, we track during move
-      isPinching = false;
-      return;
-    }
-    isPinching = false;
-  }
-
-  // Enhanced pinch: track scale during move and apply on end
   let lastPinchScale = 1;
-
-  // Override pinch move to track scale
   function onPinchTouchMoveTracked(e) {
     if (!isPinching || e.touches.length < 2) return;
     const currentDist = getTouchDistance(e.touches[0], e.touches[1]);
@@ -235,18 +212,7 @@
     lastPinchScale = 1;
   }
 
-  // Re-register with tracking versions
-  $effect(() => {
-    if (termAreaEl) {
-      // Replace the basic handlers with tracking versions
-      termAreaEl.removeEventListener('touchmove', onPinchTouchMove);
-      termAreaEl.removeEventListener('touchend', onPinchTouchEnd);
-      termAreaEl.removeEventListener('touchcancel', onPinchTouchEnd);
-      termAreaEl.addEventListener('touchmove', onPinchTouchMoveTracked, { passive: true });
-      termAreaEl.addEventListener('touchend', onPinchTouchEndTracked, { passive: true });
-      termAreaEl.addEventListener('touchcancel', onPinchTouchEndTracked, { passive: true });
-    }
-  });
+
 </script>
 
 <!-- Select mode overlay -->

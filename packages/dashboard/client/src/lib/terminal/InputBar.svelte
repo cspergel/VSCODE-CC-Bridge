@@ -7,7 +7,6 @@
   import { onMount, onDestroy } from 'svelte';
 
   let inputEl;
-  let barEl;
   let text = $state('');
   let historyIndex = $state(-1);
   let draft = $state('');
@@ -16,27 +15,28 @@
   // Keyboard-aware positioning via visualViewport API
   let fullHeight = 0;
   let vpHandler = null;
+  let orientationHandler = null;
 
   onMount(() => {
     fullHeight = window.innerHeight;
 
+    // Update fullHeight on orientation/resize changes
+    orientationHandler = () => { fullHeight = window.innerHeight; };
+    window.addEventListener('orientationchange', orientationHandler);
+
     if (window.visualViewport) {
       vpHandler = () => {
         const vp = window.visualViewport;
-        // When keyboard opens, viewport height shrinks
-        // Offset the input bar upward by the delta minus the tab bar
         const heightDelta = fullHeight - vp.height;
-        // The tab bar is at the bottom and has its own fixed position
-        // We need to account for it when keyboard is open
         const tabBarH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tabbar-h')) || 52;
 
         if (heightDelta > 100) {
-          // Keyboard is likely open
-          // On iOS, visualViewport.offsetTop may shift; use height delta
           keyboardOffset = heightDelta - tabBarH;
           if (keyboardOffset < 0) keyboardOffset = 0;
         } else {
           keyboardOffset = 0;
+          // Update fullHeight when keyboard is closed (captures rotation)
+          fullHeight = window.innerHeight;
         }
       };
       window.visualViewport.addEventListener('resize', vpHandler);
@@ -48,6 +48,9 @@
     if (vpHandler && window.visualViewport) {
       window.visualViewport.removeEventListener('resize', vpHandler);
       window.visualViewport.removeEventListener('scroll', vpHandler);
+    }
+    if (orientationHandler) {
+      window.removeEventListener('orientationchange', orientationHandler);
     }
   });
 
@@ -99,7 +102,6 @@
 
 <div
   class="input-bar"
-  bind:this={barEl}
   style={keyboardOffset > 0 ? `transform: translateY(-${keyboardOffset}px)` : ''}
 >
   <input
