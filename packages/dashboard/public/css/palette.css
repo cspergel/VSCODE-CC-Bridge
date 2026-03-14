@@ -1,0 +1,168 @@
+/* Command palette — search + categorized command list */
+
+.palette-backdrop {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: var(--z-palette-backdrop);
+}
+
+.palette-backdrop.visible { display: block; }
+
+.palette {
+  display: none;
+  position: fixed;
+  z-index: var(--z-palette);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  flex-direction: column;
+}
+
+.palette.open { display: flex; }
+
+/* Mobile: slide up from bottom */
+@media (max-width: 768px) {
+  .palette {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 80vh;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+}
+
+/* Desktop: centered overlay */
+@media (min-width: 769px) {
+  .palette {
+    top: 15vh;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 520px;
+    max-height: 60vh;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+  }
+}
+
+.palette-search {
+  width: 100%;
+  padding: var(--space-md);
+  background: var(--bg);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: var(--font-ui);
+  font-family: var(--font-sans);
+}
+
+.palette-search:focus { outline: none; }
+
+.palette-search::placeholder { color: var(--text-dim); }
+
+.palette-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.palette-category {
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-ui-xs);
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  min-height: var(--touch-min);
+  transition: background var(--duration-fast);
+  font-size: var(--font-ui);
+  color: var(--text);
+}
+
+.palette-item:hover,
+.palette-item.focused {
+  background: rgba(88,166,255,0.08);
+}
+
+.palette-item:active {
+  transform: scale(0.98);
+}
+
+.palette-item .palette-icon {
+  font-size: 16px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.palette-item .palette-label {
+  flex: 1;
+}
+
+.palette-item .palette-shortcut {
+  font-size: var(--font-ui-xs);
+  color: var(--text-dim);
+  background: var(--bg);
+  padding: 2px var(--space-sm);
+  border-radius: var(--radius-xs);
+}
+
+/* Toggle items (mode switches) */
+.palette-item.toggle {
+  justify-content: space-between;
+}
+
+.palette-item.toggle .toggle-switch {
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--border);
+  position: relative;
+  transition: background var(--duration-fast);
+  cursor: pointer;
+}
+
+.palette-item.toggle .toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform var(--duration-fast), background var(--duration-fast);
+}
+
+.palette-item.toggle .toggle-switch.on {
+  background: var(--accent);
+}
+
+.palette-item.toggle .toggle-switch.on::after {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+/* Danger items (YOLO mode, kill session) */
+.palette-item.danger {
+  color: var(--red);
+}
+
+.palette-item.danger:hover,
+.palette-item.danger.focused {
+  background: rgba(248,81,73,0.08);
+}
