@@ -1,26 +1,15 @@
-// packages/dashboard/public/sw.js
-const CACHE_NAME = 'claude-bridge-v5';
-const STATIC_ASSETS = [
+// Service worker for Claude Code PWA
+const CACHE_NAME = 'claude-code-v1';
+
+// Shell assets to pre-cache on install
+const SHELL_ASSETS = [
   '/',
-  '/css/variables.css',
-  '/css/layout.css',
-  '/css/terminal.css',
-  '/css/panels.css',
-  '/css/palette.css',
-  '/css/animations.css',
-  '/js/app.js',
-  '/js/terminal.js',
-  '/js/input-bar.js',
-  '/js/panels.js',
-  '/js/palette.js',
-  '/js/platform.js',
-  '/js/fab.js',
   '/manifest.json',
 ];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS))
   );
   self.skipWaiting();
 });
@@ -35,18 +24,75 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Skip non-GET and API/WS requests
-  if (e.request.method !== 'GET') return;
-  if (e.request.url.includes('/api/') || e.request.url.includes('/ws')) return;
+  const url = new URL(e.request.url);
 
-  // Network-first for HTML and JS/CSS (so updates are picked up immediately)
-  // Falls back to cache if offline
+  // Skip non-GET requests
+  if (e.request.method !== 'GET') return;
+
+  // Skip WebSocket and API requests — always network
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws')) return;
+
+  // Hashed build assets (e.g., /assets/index-abc123.js) — cache-first
+  // Vite generates fingerprinted filenames so cached versions are always valid
+  if (url.pathname.startsWith('/assets/')) {
+    e.respondWith(
+      caches.match(e.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(e.request).then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          }
+          return response;
+        });
+      })
+    );
+    return;
+  }
+
+  // Static assets (icons, manifest) — cache-first with network update
+  if (url.pathname.startsWith('/icons/') || url.pathname === '/manifest.json') {
+    e.respondWith(
+      caches.match(e.request).then((cached) => {
+        const fetchPromise = fetch(e.request).then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          }
+          return response;
+        }).catch(() => cached);
+
+        return cached || fetchPromise;
+      })
+    );
+    return;
+  }
+
+  // HTML navigation (index.html) — network-first with cache fallback
+  // This ensures users get the latest build but still works offline
+  if (e.request.mode === 'navigate' || url.pathname === '/') {
+    e.respondWith(
+      fetch(e.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match('/'))
+    );
+    return;
+  }
+
+  // Everything else — network-first with cache fallback
   e.respondWith(
     fetch(e.request)
       .then((response) => {
-        // Update cache with fresh response
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+        }
         return response;
       })
       .catch(() => caches.match(e.request))
