@@ -32,6 +32,29 @@ function loadConfig(): Config {
   }
 }
 
+// Platform pause state (controlled by dashboard via IPC)
+const platformPaused: Record<string, boolean> = { whatsapp: false, telegram: false };
+const pauseQueues: Record<string, Array<{ send: () => Promise<void> }>> = { whatsapp: [], telegram: [] };
+
+// Listen for pause/unpause from dashboard
+process.on("message", (msg: any) => {
+  if (msg?.type === "platform_pause") {
+    const platform = msg.platform as string;
+    platformPaused[platform] = msg.paused;
+    console.log(`[bridge] Platform ${platform} ${msg.paused ? "paused" : "resumed"}`);
+    if (!msg.paused && pauseQueues[platform]?.length) {
+      // Flush queued messages
+      console.log(`[bridge] Flushing ${pauseQueues[platform].length} queued messages for ${platform}`);
+      const queued = pauseQueues[platform].splice(0);
+      for (const item of queued) {
+        item.send().catch((err: any) => {
+          console.error(`[bridge] Failed to flush queued ${platform} message:`, err);
+        });
+      }
+    }
+  }
+});
+
 async function main() {
   const config = loadConfig();
 
@@ -110,21 +133,48 @@ async function main() {
 
     // Send to WhatsApp
     if (waClient) {
-      for (const num of config.whatsapp!.allowedNumbers) {
-        try {
-          await waClient.sendToNumber(num, formatted);
-        } catch (err) {
-          console.error(`[bridge] WhatsApp send to ${num} failed:`, err);
+      if (platformPaused.whatsapp) {
+        console.log(`[bridge] WhatsApp paused — queuing message`);
+        const wa = waClient;
+        const nums = [...config.whatsapp!.allowedNumbers];
+        const msg = formatted;
+        pauseQueues.whatsapp.push({
+          send: async () => {
+            for (const num of nums) {
+              try { await wa.sendToNumber(num, msg); }
+              catch (err) { console.error(`[bridge] WhatsApp send to ${num} failed:`, err); }
+            }
+          }
+        });
+      } else {
+        for (const num of config.whatsapp!.allowedNumbers) {
+          try {
+            await waClient.sendToNumber(num, formatted);
+          } catch (err) {
+            console.error(`[bridge] WhatsApp send to ${num} failed:`, err);
+          }
         }
       }
     }
 
     // Send to Telegram
     if (tgClient) {
-      try {
-        await tgClient.broadcast(formatted);
-      } catch (err) {
-        console.error(`[bridge] Telegram broadcast failed:`, err);
+      if (platformPaused.telegram) {
+        console.log(`[bridge] Telegram paused — queuing message`);
+        const tg = tgClient;
+        const msg = formatted;
+        pauseQueues.telegram.push({
+          send: async () => {
+            try { await tg.broadcast(msg); }
+            catch (err) { console.error(`[bridge] Telegram broadcast failed:`, err); }
+          }
+        });
+      } else {
+        try {
+          await tgClient.broadcast(formatted);
+        } catch (err) {
+          console.error(`[bridge] Telegram broadcast failed:`, err);
+        }
       }
     }
   }

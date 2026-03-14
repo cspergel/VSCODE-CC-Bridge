@@ -218,6 +218,15 @@ export class ProcessManager extends EventEmitter {
     return false;
   }
 
+  sendToBridge(msg: unknown): boolean {
+    const svc = this.services.bridge;
+    if (svc.process?.connected) {
+      svc.process.send(msg as any);
+      return true;
+    }
+    return false;
+  }
+
   /** Send IPC to agent and wait for a response matching one of the expected types */
   requestFromAgent(msg: unknown, expectedTypes: string[], timeoutMs = 5000): Promise<any> {
     return new Promise((resolve, reject) => {

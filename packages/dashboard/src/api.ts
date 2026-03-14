@@ -229,6 +229,29 @@ export function createApiRouter(pm: ProcessManager, db: Database): Router {
     }
   });
 
+  // Platform pause toggles
+  const platformPaused: Record<string, boolean> = { whatsapp: false, telegram: false };
+
+  router.get("/platforms", (_req: Request, res: Response) => {
+    res.json(platformPaused);
+  });
+
+  router.post("/platforms/:name/toggle", (req: Request, res: Response) => {
+    const { name } = req.params;
+    if (name !== "whatsapp" && name !== "telegram") {
+      res.status(400).json({ error: "Invalid platform" });
+      return;
+    }
+    platformPaused[name] = !platformPaused[name];
+    // Send IPC to bridge if available
+    try {
+      pm.sendToBridge({ type: "platform_pause", platform: name, paused: platformPaused[name] });
+    } catch (e) {
+      // Bridge might not be running
+    }
+    res.json({ platform: name, paused: platformPaused[name] });
+  });
+
   // Health check
   router.get("/health", (_req: Request, res: Response) => {
     const statuses = pm.getAllStatuses();
