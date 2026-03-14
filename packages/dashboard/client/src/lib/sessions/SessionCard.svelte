@@ -98,13 +98,17 @@
     Delete
   </button>
 
-  <!-- Swipeable card -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
     class="card"
     class:active={isActive}
     class:swiping={offsetX !== 0}
     style="transform: translateX({offsetX}px)"
+    role="button"
+    tabindex="0"
     onclick={select}
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') select(); }}
     ontouchstart={onTouchStart}
     ontouchmove={onTouchMove}
     ontouchend={onTouchEnd}
