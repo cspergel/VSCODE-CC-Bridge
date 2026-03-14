@@ -68,32 +68,7 @@
   transition: transform 50ms;
 }
 
-/* === SWIPE-TO-DELETE === */
-.session-card {
-  position: relative;
-  overflow: hidden;
-}
-
-.session-card .delete-reveal {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 80px;
-  background: var(--red);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 600;
-  font-size: var(--font-ui-sm);
-  transform: translateX(100%);
-  transition: transform var(--duration-normal) var(--ease-spring);
-}
-
-.session-card.swiped .delete-reveal {
-  transform: translateX(0);
-}
+/* Swipe-to-delete styles are in panels.css — animation transition defined there */
 
 /* === LOADING SKELETON === */
 .skeleton {

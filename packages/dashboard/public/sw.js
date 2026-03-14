@@ -1,5 +1,5 @@
 // packages/dashboard/public/sw.js
-const CACHE_NAME = 'claude-bridge-v1';
+const CACHE_NAME = 'claude-bridge-v2';
 const STATIC_ASSETS = [
   '/',
   '/css/variables.css',
@@ -10,10 +10,9 @@ const STATIC_ASSETS = [
   '/css/animations.css',
   '/js/app.js',
   '/js/terminal.js',
+  '/js/input-bar.js',
   '/js/panels.js',
   '/js/palette.js',
-  '/js/sessions.js',
-  '/js/input-bar.js',
   '/js/platform.js',
   '/manifest.json',
 ];

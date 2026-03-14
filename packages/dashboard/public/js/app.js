@@ -188,6 +188,44 @@ function connectWS() {
       if (window.app.palette) window.app.palette.open();
     });
   }
+
+  // --- Emergency stop button (double-click to confirm) ---
+  var btnStop = document.getElementById('btnStop');
+  if (btnStop) {
+    var stopArmed = false;
+    var stopTimer = null;
+
+    btnStop.addEventListener('click', function () {
+      if (stopArmed) {
+        // Second click — send Ctrl+C
+        clearTimeout(stopTimer);
+        stopArmed = false;
+        btnStop.classList.remove('armed');
+        btnStop.title = 'Stop Claude (click twice)';
+        if (window.app.terminal) {
+          window.app.terminal.sendInput('\x03');
+        }
+        showToast('Sent stop signal (Ctrl+C)');
+        if (window.app.inputBar && window.app.inputBar.haptic) {
+          window.app.inputBar.haptic('medium');
+        }
+      } else {
+        // First click — arm it
+        stopArmed = true;
+        btnStop.classList.add('armed');
+        btnStop.title = 'Click again to confirm stop';
+        if (window.app.inputBar && window.app.inputBar.haptic) {
+          window.app.inputBar.haptic('light');
+        }
+        // Auto-disarm after 3 seconds
+        stopTimer = setTimeout(function () {
+          stopArmed = false;
+          btnStop.classList.remove('armed');
+          btnStop.title = 'Stop Claude (click twice)';
+        }, 3000);
+      }
+    });
+  }
 })();
 
 // --- Health polling (fallback) ---

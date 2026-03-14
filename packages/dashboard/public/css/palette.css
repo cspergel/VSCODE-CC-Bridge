@@ -97,9 +97,7 @@
   background: rgba(88,166,255,0.08);
 }
 
-.palette-item:active {
-  transform: scale(0.98);
-}
+/* :active press scale is in animations.css */
 
 .palette-item .palette-icon {
   font-size: 16px;

@@ -5,6 +5,7 @@
 
   // --- State ---
   var currentPanel = null;
+  var isMaximized = false;
   var logBuffer = [];
   var LOG_BUFFER_MAX = 1000;
   var logFilter = 'all'; // 'all' | 'agent' | 'bridge'
@@ -74,7 +75,13 @@
     var html = renderPanel(panelName);
     sidebarPanel.innerHTML = html;
     sidebarPanel.classList.add('active');
-    sidebar.classList.add('expanded');
+    if (isMaximized) {
+      sidebar.classList.remove('expanded');
+      sidebar.classList.add('maximized');
+    } else {
+      sidebar.classList.remove('maximized');
+      sidebar.classList.add('expanded');
+    }
     bindPanelEvents(panelName);
 
     // Update sidebar button active state
@@ -86,6 +93,38 @@
       } else {
         btn.classList.remove('active');
       }
+    }
+
+    // Refit terminal after sidebar width change
+    if (window.app.terminal) {
+      setTimeout(function () { window.app.terminal.fitActive(); }, 50);
+    }
+  }
+
+  function toggleMaximize() {
+    isMaximized = !isMaximized;
+    if (!sidebar) return;
+    if (isMaximized) {
+      sidebar.classList.remove('expanded');
+      sidebar.classList.add('maximized');
+    } else {
+      sidebar.classList.remove('maximized');
+      sidebar.classList.add('expanded');
+    }
+    // Update maximize button state
+    var maxBtn = document.getElementById('panelMaximizeBtn');
+    if (maxBtn) {
+      if (isMaximized) {
+        maxBtn.classList.add('active');
+        maxBtn.title = 'Restore panel size';
+      } else {
+        maxBtn.classList.remove('active');
+        maxBtn.title = 'Maximize panel';
+      }
+    }
+    // Refit terminal
+    if (window.app.terminal) {
+      setTimeout(function () { window.app.terminal.fitActive(); }, 50);
     }
   }
 
@@ -113,6 +152,8 @@
 
   function closeDesktop() {
     sidebar.classList.remove('expanded');
+    sidebar.classList.remove('maximized');
+    isMaximized = false;
     sidebarPanel.classList.remove('active');
     sidebarPanel.innerHTML = '';
 
@@ -120,6 +161,11 @@
     var btns = sidebar.querySelectorAll('.sidebar-btn');
     for (var i = 0; i < btns.length; i++) {
       btns[i].classList.remove('active');
+    }
+
+    // Refit terminal after sidebar collapse
+    if (window.app.terminal) {
+      setTimeout(function () { window.app.terminal.fitActive(); }, 50);
     }
   }
 
@@ -305,13 +351,22 @@
     }
   }
 
+  // --- Panel header helper (includes maximize button on desktop) ---
+  function renderPanelHeader(title, extraButtons) {
+    var html = '<div class="panel-header">';
+    html += '<h2>' + title + '</h2>';
+    html += '<div class="panel-header-actions">';
+    if (extraButtons) html += extraButtons;
+    if (!isMobile()) {
+      html += '<button class="panel-maximize-btn' + (isMaximized ? ' active' : '') + '" id="panelMaximizeBtn" title="' + (isMaximized ? 'Restore panel size' : 'Maximize panel') + '">&#x2922;</button>';
+    }
+    html += '</div></div>';
+    return html;
+  }
+
   // --- Sessions Panel ---
   function renderSessionsPanel() {
-    var html = '<div class="panel-header">';
-    html += '<h2>Sessions</h2>';
-    html += '<div class="panel-header-actions">';
-    html += '<button class="panel-btn primary" id="panelNewSessionBtn">+ New</button>';
-    html += '</div></div>';
+    var html = renderPanelHeader('Sessions', '<button class="panel-btn primary" id="panelNewSessionBtn">+ New</button>');
     html += '<div id="sessionsList"><div class="panel-empty"><div class="empty-icon">...</div>Loading sessions...</div></div>';
 
     // Fetch sessions async
@@ -359,11 +414,7 @@
 
   // --- Logs Panel ---
   function renderLogsPanel() {
-    var html = '<div class="panel-header">';
-    html += '<h2>Logs</h2>';
-    html += '<div class="panel-header-actions">';
-    html += '<button class="panel-btn" id="panelClearLogsBtn">Clear</button>';
-    html += '</div></div>';
+    var html = renderPanelHeader('Logs', '<button class="panel-btn" id="panelClearLogsBtn">Clear</button>');
 
     // Filter chips
     html += '<div class="log-filter-chips">';
@@ -427,9 +478,7 @@
   // --- Services Panel ---
   function renderServicesPanel() {
     var statuses = window.app.serviceStatuses || {};
-    var html = '<div class="panel-header">';
-    html += '<h2>Services</h2>';
-    html += '</div>';
+    var html = renderPanelHeader('Services');
 
     // Agent card
     html += renderServiceCard('agent', statuses.agent || {});
@@ -505,9 +554,7 @@
 
   // --- Messages Panel ---
   function renderMessagesPanel() {
-    var html = '<div class="panel-header">';
-    html += '<h2>Messages</h2>';
-    html += '</div>';
+    var html = renderPanelHeader('Messages');
 
     // Session picker
     html += '<select class="session-picker" id="panelMessageSessionPicker">';
@@ -598,9 +645,7 @@
 
   // --- Audit Panel ---
   function renderAuditPanel() {
-    var html = '<div class="panel-header">';
-    html += '<h2>Audit</h2>';
-    html += '</div>';
+    var html = renderPanelHeader('Audit');
 
     html += '<div id="panelAuditList"><div class="panel-empty">Loading audit events...</div></div>';
 
@@ -822,6 +867,12 @@
   // =========================================================================
 
   function bindPanelEvents(panelName) {
+    // Maximize button (desktop only)
+    var maxBtn = document.getElementById('panelMaximizeBtn');
+    if (maxBtn) {
+      maxBtn.addEventListener('click', toggleMaximize);
+    }
+
     switch (panelName) {
       case 'sessions':
         bindSessionsPanelEvents();
@@ -1220,6 +1271,7 @@
     close: close,
     toggle: toggle,
     isOpen: isOpen,
+    toggleMaximize: toggleMaximize,
     appendLog: appendLog,
     clearLogs: clearLogs,
     updateService: updateService,
