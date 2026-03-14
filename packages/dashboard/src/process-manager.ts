@@ -1,9 +1,10 @@
-import { ChildProcess, fork } from "child_process";
+import { ChildProcess, fork, spawn } from "child_process";
 import { EventEmitter } from "events";
 import { existsSync } from "fs";
 import { resolve } from "path";
+import { execSync } from "child_process";
 
-export type ServiceName = "agent" | "bridge";
+export type ServiceName = "agent" | "bridge" | "tunnel";
 export type ServiceStatus = "stopped" | "starting" | "running" | "error";
 
 export interface LogLine {
@@ -19,6 +20,9 @@ interface ServiceState {
   entryPath: string;
   startedAt: string | null;
   error: string | null;
+  spawnMode?: "fork" | "spawn"; // fork for Node modules, spawn for external binaries
+  spawnCmd?: string; // command for spawn mode
+  spawnArgs?: string[]; // args for spawn mode
 }
 
 export class ProcessManager extends EventEmitter {
@@ -29,6 +33,13 @@ export class ProcessManager extends EventEmitter {
 
     const packagesDir = resolve(__dirname, "..", "..");
 
+    // Find cloudflared binary
+    let cloudflaredPath = "cloudflared";
+    try {
+      const which = execSync("where cloudflared 2>NUL || which cloudflared 2>/dev/null", { encoding: "utf8" }).trim().split("\n")[0];
+      if (which) cloudflaredPath = which.trim();
+    } catch { /* use default */ }
+
     this.services = {
       agent: {
         status: "stopped",
@@ -36,6 +47,7 @@ export class ProcessManager extends EventEmitter {
         entryPath: resolve(packagesDir, "agent", "dist", "index.js"),
         startedAt: null,
         error: null,
+        spawnMode: "fork",
       },
       bridge: {
         status: "stopped",
@@ -43,6 +55,17 @@ export class ProcessManager extends EventEmitter {
         entryPath: resolve(packagesDir, "bridge", "dist", "index.js"),
         startedAt: null,
         error: null,
+        spawnMode: "fork",
+      },
+      tunnel: {
+        status: "stopped",
+        process: null,
+        entryPath: cloudflaredPath,
+        startedAt: null,
+        error: null,
+        spawnMode: "spawn",
+        spawnCmd: cloudflaredPath,
+        spawnArgs: ["tunnel", "run", "claude-bridge"],
       },
     };
   }
@@ -62,6 +85,7 @@ export class ProcessManager extends EventEmitter {
     return {
       agent: this.getStatus("agent"),
       bridge: this.getStatus("bridge"),
+      tunnel: this.getStatus("tunnel"),
     };
   }
 
@@ -69,7 +93,11 @@ export class ProcessManager extends EventEmitter {
     const svc = this.services[name];
     if (svc.status === "running" || svc.status === "starting") return false;
 
-    if (!existsSync(svc.entryPath)) {
+    // For spawn mode (tunnel), check command exists; for fork mode, check entry file
+    if (svc.spawnMode === "spawn") {
+      // Try to stop the Windows service first so we don't conflict
+      try { execSync("sc stop Cloudflared 2>NUL", { encoding: "utf8" }); } catch { /* may not be admin */ }
+    } else if (!existsSync(svc.entryPath)) {
       svc.status = "error";
       svc.error = `Entry point not found: ${svc.entryPath}. Run npm run build first.`;
       this.emitStatus(name);
@@ -80,10 +108,20 @@ export class ProcessManager extends EventEmitter {
     svc.error = null;
     this.emitStatus(name);
 
-    const child = fork(svc.entryPath, [], {
-      stdio: ["ignore", "pipe", "pipe", "ipc"],
-      silent: true,
-    });
+    let child: ChildProcess;
+
+    if (svc.spawnMode === "spawn" && svc.spawnCmd) {
+      // External binary (e.g. cloudflared)
+      child = spawn(svc.spawnCmd, svc.spawnArgs || [], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } else {
+      // Node module (fork with IPC)
+      child = fork(svc.entryPath, [], {
+        stdio: ["ignore", "pipe", "pipe", "ipc"],
+        silent: true,
+      });
+    }
 
     svc.process = child;
     svc.startedAt = new Date().toISOString();
@@ -112,7 +150,9 @@ export class ProcessManager extends EventEmitter {
       const text = data.toString().trimEnd();
       if (!text) return;
       for (const line of text.split("\n")) {
-        this.emitLog(name, "stderr", line);
+        // For tunnel, cloudflared logs INF lines to stderr — treat as stdout
+        const stream = name === "tunnel" && line.includes(" INF ") ? "stdout" : "stderr";
+        this.emitLog(name, stream, line);
       }
     });
 
@@ -122,7 +162,7 @@ export class ProcessManager extends EventEmitter {
         svc.status = "running";
         this.emitStatus(name);
       }
-    }, 1500);
+    }, name === "tunnel" ? 3000 : 1500); // tunnel takes longer to establish connections
 
     child.on("exit", (code, signal) => {
       clearTimeout(startTimer);
@@ -181,7 +221,7 @@ export class ProcessManager extends EventEmitter {
 
   shutdownAll(): Promise<void> {
     return new Promise((resolve) => {
-      const names: ServiceName[] = ["bridge", "agent"];
+      const names: ServiceName[] = ["bridge", "agent", "tunnel"];
       let remaining = 0;
 
       for (const name of names) {

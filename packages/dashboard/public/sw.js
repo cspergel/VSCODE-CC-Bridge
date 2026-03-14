@@ -1,5 +1,5 @@
 // packages/dashboard/public/sw.js
-const CACHE_NAME = 'claude-bridge-v2';
+const CACHE_NAME = 'claude-bridge-v5';
 const STATIC_ASSETS = [
   '/',
   '/css/variables.css',
@@ -14,6 +14,7 @@ const STATIC_ASSETS = [
   '/js/panels.js',
   '/js/palette.js',
   '/js/platform.js',
+  '/js/fab.js',
   '/manifest.json',
 ];
 
@@ -34,11 +35,20 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Network-first for API calls, cache-first for static assets
-  if (e.request.url.includes('/api/') || e.request.url.includes('/ws')) {
-    return; // Let these pass through to network
-  }
+  // Skip non-GET and API/WS requests
+  if (e.request.method !== 'GET') return;
+  if (e.request.url.includes('/api/') || e.request.url.includes('/ws')) return;
+
+  // Network-first for HTML and JS/CSS (so updates are picked up immediately)
+  // Falls back to cache if offline
   e.respondWith(
-    caches.match(e.request).then((cached) => cached || fetch(e.request))
+    fetch(e.request)
+      .then((response) => {
+        // Update cache with fresh response
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(e.request))
   );
 });

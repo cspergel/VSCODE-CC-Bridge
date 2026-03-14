@@ -24,7 +24,7 @@
   --space-xl: 32px;
 
   /* Font sizes — terminal font scales with breakpoints */
-  --font-term: 16px;
+  --font-term: 13px;
   --font-ui: 14px;
   --font-ui-sm: 12px;
   --font-ui-xs: 11px;
@@ -63,10 +63,17 @@
   --touch-min: 48px;
 }
 
+/* Phone: smaller terminal font for more columns */
+@media (max-width: 479px) {
+  :root {
+    --font-term: 11px;
+  }
+}
+
 /* Tablet: adjust terminal font */
 @media (min-width: 480px) and (max-width: 768px) {
   :root {
-    --font-term: 15px;
+    --font-term: 13px;
   }
 }
 

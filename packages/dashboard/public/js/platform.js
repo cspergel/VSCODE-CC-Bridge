@@ -142,6 +142,25 @@
   }
 
   // =========================================================================
+  // TOGGLE ALL — batch toggle both platforms together
+  // =========================================================================
+
+  function toggleAll() {
+    // Determine target state: if any are active, pause all; if all paused, resume all
+    var anyActive = !state.whatsapp || !state.telegram;
+    var names = ['whatsapp', 'telegram'];
+
+    for (var i = 0; i < names.length; i++) {
+      var name = names[i];
+      var shouldToggle = anyActive ? !state[name] : state[name];
+      // Only toggle if current state doesn't match target
+      if (shouldToggle) {
+        toggle(name);
+      }
+    }
+  }
+
+  // =========================================================================
   // GET STATE
   // =========================================================================
 
@@ -196,6 +215,7 @@
   window.app.platform = {
     init: init,
     toggle: toggle,
+    toggleAll: toggleAll,
     getState: getState,
     renderToggleSwitches: renderToggleSwitches
   };

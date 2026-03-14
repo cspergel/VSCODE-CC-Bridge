@@ -171,11 +171,24 @@
     if (!text) return;
 
     addToHistory(text);
-    sendInput(text + '\r');
 
+    // Grab text before clearing — use \r for PTY Enter
+    var toSend = text + '\r';
+
+    // Clear input immediately
     commandInput.value = '';
     autoGrow();
-    commandInput.focus();
+
+    // Send text + newline as one message
+    sendInput(toSend);
+
+    // On mobile, blur to dismiss keyboard and reset viewport transforms
+    // On desktop, keep focus for fast successive commands
+    if (window.innerWidth <= 768) {
+      commandInput.blur();
+    } else {
+      commandInput.focus();
+    }
   }
 
   /**
@@ -185,6 +198,16 @@
   function sendInput(data) {
     if (window.app && window.app.terminal && window.app.terminal.sendInput) {
       window.app.terminal.sendInput(data);
+    } else {
+      if (window.app && window.app.showToast) {
+        window.app.showToast('Terminal not ready — no active session');
+      }
+      console.error('[input-bar] sendInput failed: terminal not available', {
+        hasApp: !!window.app,
+        hasTerminal: !!(window.app && window.app.terminal),
+        hasSendInput: !!(window.app && window.app.terminal && window.app.terminal.sendInput),
+        activeSession: window.app && window.app.activeSessionId,
+      });
     }
   }
 
@@ -215,14 +238,23 @@
     ],
   };
 
+  // --- Parsed choices state ---
+  var lastParsedChoices = []; // [ { num: '1', label: 'Option text' }, ... ]
+
   /**
    * setContext(state)
    * Updates the quick-action buttons to match the given terminal state.
    * Cross-fades old buttons out and new buttons in.
+   * For 'choices' state, parses options from the terminal buffer first.
    */
   function setContext(state) {
-    if (!QUICK_ACTION_SETS[state]) state = 'idle';
-    if (state === currentContext) return;
+    if (state === 'choices') {
+      var choices = parseChoicesFromBuffer();
+      if (choices.length === 0) state = 'running'; // fallback if parse failed
+      else lastParsedChoices = choices;
+    }
+    if (!QUICK_ACTION_SETS[state] && state !== 'choices') state = 'idle';
+    if (state === currentContext && state !== 'choices') return;
     currentContext = state;
     renderQuickActions(state, true);
   }
@@ -234,7 +266,39 @@
    */
   function renderQuickActions(state, animate) {
     if (!quickActions) return;
-    var buttons = QUICK_ACTION_SETS[state] || QUICK_ACTION_SETS.idle;
+    var buttons;
+
+    if (state === 'choices' && lastParsedChoices.length > 0) {
+      // Build dynamic buttons from parsed choices
+      buttons = [];
+      for (var c = 0; c < lastParsedChoices.length; c++) {
+        (function (choice) {
+          buttons.push({
+            label: choice.num + '. ' + choice.label,
+            action: function () { sendInput(choice.num + '\r'); },
+            cls: 'accent',
+          });
+        })(lastParsedChoices[c]);
+      }
+      // Add a cancel button
+      buttons.push({
+        label: '\u2303C Cancel',
+        action: function () { sendInput('\x03'); },
+        cls: 'cancel',
+      });
+    } else {
+      buttons = QUICK_ACTION_SETS[state] || QUICK_ACTION_SETS.idle;
+    }
+
+    // Auto-show command bar on mobile when choices are detected
+    if (state === 'choices' && window.innerWidth <= 768) {
+      var appEl = document.getElementById('app');
+      if (appEl && !appEl.classList.contains('command-bar-visible')) {
+        appEl.classList.add('command-bar-visible');
+        if (window.app) window.app.commandBarVisible = true;
+        if (window.app.terminal) setTimeout(function () { window.app.terminal.fitActive(); }, 50);
+      }
+    }
 
     function replaceButtons() {
       quickActions.innerHTML = '';
@@ -274,7 +338,7 @@
   /**
    * detectContext(text)
    * Examines terminal output text (typically the last line) and returns
-   * the appropriate context state: 'idle', 'approval', 'picker', or 'running'.
+   * the appropriate context state: 'idle', 'approval', 'picker', 'choices', or 'running'.
    */
   function detectContext(text) {
     if (!text) return 'running';
@@ -289,6 +353,13 @@
       return 'picker';
     }
 
+    // Check for numbered choice lists (e.g. "1. Option" or "1) Option")
+    // Look for 2+ numbered items in the recent output
+    var choiceMatches = text.match(/^\s*\d+[.)]\s+\S/gm);
+    if (choiceMatches && choiceMatches.length >= 2) {
+      return 'choices';
+    }
+
     // Check for shell prompt (idle)
     if (/[❯$>]\s*$/.test(text)) {
       return 'idle';
@@ -298,24 +369,120 @@
     return 'running';
   }
 
+  /**
+   * parseChoicesFromBuffer()
+   * Reads the active terminal's buffer (last ~30 lines) and extracts
+   * numbered choice options like "1. Something" or "1) Something".
+   * Returns array of { num: string, label: string }.
+   */
+  function parseChoicesFromBuffer() {
+    var choices = [];
+    if (!window.app || !window.app.terminal) return choices;
+
+    var sessionId = window.app.activeSessionId;
+    if (!sessionId) return choices;
+
+    var entry = window.app.terminal.getEntry(sessionId);
+    if (!entry || !entry.term) return choices;
+
+    var buffer = entry.term.buffer.active;
+    var totalLines = buffer.length;
+
+    // Scan last 40 lines for numbered options
+    var startLine = Math.max(0, totalLines - 40);
+    var lines = [];
+    for (var i = startLine; i < totalLines; i++) {
+      var line = buffer.getLine(i);
+      if (line) lines.push(line.translateToString().trim());
+    }
+
+    // Find consecutive numbered items (look for patterns like "1. text" or "1) text")
+    var choicePattern = /^(\d+)[.)]\s+(.+)/;
+    var foundChoices = [];
+    var lastNum = 0;
+
+    for (var j = lines.length - 1; j >= 0; j--) {
+      var match = choicePattern.exec(lines[j]);
+      if (match) {
+        var num = parseInt(match[1], 10);
+        // Build list in reverse, expect descending numbers
+        if (foundChoices.length === 0 || num === lastNum - 1) {
+          foundChoices.unshift({ num: match[1], label: match[2].trim() });
+          lastNum = num;
+        } else if (num < lastNum) {
+          // Gap in numbering — start fresh from this point
+          foundChoices = [{ num: match[1], label: match[2].trim() }];
+          lastNum = num;
+        }
+      } else if (foundChoices.length >= 2) {
+        // Hit a non-choice line after finding choices — done
+        break;
+      }
+    }
+
+    // Only return if we found 2+ consecutive choices starting from 1
+    if (foundChoices.length >= 2 && foundChoices[0].num === '1') {
+      // Truncate long labels for button display
+      for (var k = 0; k < foundChoices.length; k++) {
+        if (foundChoices[k].label.length > 30) {
+          foundChoices[k].label = foundChoices[k].label.slice(0, 28) + '...';
+        }
+      }
+      return foundChoices;
+    }
+
+    return [];
+  }
+
   // =====================================================================
   // visualViewport Positioning (mobile keyboard)
   // =====================================================================
 
   function setupViewportHandlers() {
     if (!window.visualViewport) return;
+    // Only apply on mobile
+    if (window.innerWidth > 768) return;
+
+    var pendingRAF = null;
 
     function adjustPosition() {
-      var offset = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop;
-      // Clamp to non-negative
-      if (offset < 0) offset = 0;
-      var transform = offset > 0 ? 'translateY(-' + offset + 'px)' : '';
-      if (inputBar) inputBar.style.transform = transform;
-      if (quickActions) quickActions.style.transform = transform;
+      // Only adjust when command bar is visible on mobile
+      var appEl = document.getElementById('app');
+      if (appEl && !appEl.classList.contains('command-bar-visible')) return;
+      if (pendingRAF) return; // Throttle via rAF
+      pendingRAF = requestAnimationFrame(function () {
+        pendingRAF = null;
+        var vv = window.visualViewport;
+        // The keyboard height is the difference between layout viewport and visual viewport
+        var offset = window.innerHeight - vv.height - vv.offsetTop;
+        // Clamp — negative means no keyboard or browser chrome overlap
+        if (offset < 1) offset = 0;
+        // Only apply transforms if there's actually a keyboard
+        var transform = offset > 0 ? 'translateY(-' + offset + 'px)' : '';
+        if (inputBar) inputBar.style.transform = transform;
+        if (quickActions) quickActions.style.transform = transform;
+      });
+    }
+
+    function resetPosition() {
+      if (pendingRAF) {
+        cancelAnimationFrame(pendingRAF);
+        pendingRAF = null;
+      }
+      if (inputBar) inputBar.style.transform = '';
+      if (quickActions) quickActions.style.transform = '';
     }
 
     window.visualViewport.addEventListener('resize', adjustPosition);
     window.visualViewport.addEventListener('scroll', adjustPosition);
+
+    // Reset transforms when input loses focus (keyboard dismissed)
+    if (commandInput) {
+      commandInput.addEventListener('blur', function () {
+        // Small delay to allow visualViewport events to settle
+        setTimeout(resetPosition, 100);
+      });
+    }
   }
 
   // =====================================================================
@@ -354,11 +521,28 @@
       resetHistoryIndex();
     });
 
-    // Send button
+    // Send button — use both click and touchend for mobile reliability
     if (btnSend) {
-      btnSend.addEventListener('click', function () {
+      var sendTriggered = false;
+      function handleSend(e) {
+        if (sendTriggered) return;
+        sendTriggered = true;
+        // Prevent click from firing after touchend
+        e.preventDefault();
         haptic('light');
         sendCommand();
+        setTimeout(function () { sendTriggered = false; }, 300);
+      }
+      btnSend.addEventListener('touchend', handleSend);
+      btnSend.addEventListener('click', handleSend);
+    }
+
+    // When input bar textarea gets focus on mobile, blur terminal so keystrokes go to input
+    if (commandInput && window.innerWidth <= 768) {
+      commandInput.addEventListener('focus', function () {
+        if (window.app.terminal && window.app.terminal.blurTerminal) {
+          window.app.terminal.blurTerminal();
+        }
       });
     }
   }

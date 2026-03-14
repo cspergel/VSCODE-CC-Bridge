@@ -12,12 +12,12 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.svg">
 
   <!-- CSS (order matters) -->
-  <link rel="stylesheet" href="/css/variables.css">
-  <link rel="stylesheet" href="/css/layout.css">
-  <link rel="stylesheet" href="/css/terminal.css">
-  <link rel="stylesheet" href="/css/panels.css">
-  <link rel="stylesheet" href="/css/palette.css">
-  <link rel="stylesheet" href="/css/animations.css">
+  <link rel="stylesheet" href="/css/variables.css?v=5">
+  <link rel="stylesheet" href="/css/layout.css?v=5">
+  <link rel="stylesheet" href="/css/terminal.css?v=5">
+  <link rel="stylesheet" href="/css/panels.css?v=5">
+  <link rel="stylesheet" href="/css/palette.css?v=5">
+  <link rel="stylesheet" href="/css/animations.css?v=5">
 
   <!-- xterm.js -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
@@ -40,6 +40,12 @@
       </div>
       <button class="status-bar-btn" id="btnFullscreen" title="Fullscreen">&#x26F6;</button>
       <button class="status-bar-btn" id="btnPalette" title="Command Palette">&#x26A1;</button>
+    </div>
+
+    <!-- Floating repo pill (mobile only) -->
+    <div class="repo-pill" id="repoPill">
+      <span class="repo-pill-dot" id="repoPillDot"></span>
+      <span class="repo-pill-name" id="repoPillName">No session</span>
     </div>
 
     <!-- Desktop: sidebar + main -->
@@ -70,6 +76,22 @@
           <div class="fullscreen-pill" id="fullscreenPill">
             <span id="fullscreenSessionName"></span>
           </div>
+
+          <!-- Mobile terminal controls -->
+          <div class="term-font-controls" id="termFontControls">
+            <button class="term-font-btn" id="termFontDown">A-</button>
+            <button class="term-font-btn" id="termFontReset">A</button>
+            <button class="term-font-btn" id="termFontUp">A+</button>
+          </div>
+          <button class="term-select-btn" id="termSelectBtn" title="Select text">&#x2702;</button>
+          <button class="term-keyboard-btn" id="termKeyboardBtn" title="Toggle keyboard">&#x2328;</button>
+          <div class="term-select-overlay" id="termSelectOverlay"></div>
+          <button class="term-copy-btn" id="termCopyBtn">Copy</button>
+          <button class="term-scroll-btn term-scroll-top" id="termScrollTop">&#x25B2;</button>
+          <button class="term-scroll-btn term-scroll-bottom" id="termScrollBottom">&#x25BC;</button>
+          <div class="term-scroll-track" id="termScrollTrack">
+            <div class="term-scroll-thumb" id="termScrollThumb"></div>
+          </div>
         </div>
 
         <!-- Quick-action row -->
@@ -79,10 +101,36 @@
 
         <!-- Input bar -->
         <div class="input-bar" id="inputBar">
-          <textarea id="commandInput" rows="1" placeholder="Type command..."></textarea>
+          <textarea id="commandInput" rows="1" placeholder="Tap terminal to type, or enter here..."></textarea>
           <button class="send-btn" id="btnSend">&#x27A4;</button>
         </div>
       </div>
+    </div>
+
+    <!-- FAB + menu (mobile only) -->
+    <div class="fab-backdrop" id="fabBackdrop"></div>
+    <button class="fab" id="fab" aria-label="Menu">&#x2630;</button>
+    <div class="fab-menu" id="fabMenu">
+      <button class="fab-menu-item" data-action="repos">
+        <span class="fab-menu-icon">&#x1F4C1;</span>
+        <span class="fab-menu-label">Repos</span>
+      </button>
+      <button class="fab-menu-item" data-action="command-bar">
+        <span class="fab-menu-icon">&#x2328;</span>
+        <span class="fab-menu-label">Command Bar</span>
+      </button>
+      <button class="fab-menu-item fab-menu-stop" data-action="stop">
+        <span class="fab-menu-icon">&#x23F9;</span>
+        <span class="fab-menu-label">Stop</span>
+      </button>
+      <button class="fab-menu-item" data-action="messaging" id="fabMessaging">
+        <span class="fab-menu-icon">&#x1F4AC;</span>
+        <span class="fab-menu-label">Messaging ON</span>
+      </button>
+      <button class="fab-menu-item" data-action="more">
+        <span class="fab-menu-icon">&#x2699;</span>
+        <span class="fab-menu-label">More</span>
+      </button>
     </div>
 
     <!-- Panel backdrop (mobile) -->
@@ -94,16 +142,14 @@
       <div class="panel-content" id="panelContent"></div>
     </div>
 
-    <!-- Panel launcher (mobile swipe-up) -->
-    <div class="panel-launcher" id="panelLauncher">
-      <div class="panel-launcher-grid">
-        <button class="panel-launch-btn" data-panel="sessions">&#x1F4CB; Sessions</button>
-        <button class="panel-launch-btn" data-panel="logs">&#x1F4CA; Logs</button>
-        <button class="panel-launch-btn" data-panel="services">&#x2699; Services</button>
-        <button class="panel-launch-btn" data-panel="messages">&#x1F4AC; Messages</button>
-        <button class="panel-launch-btn" data-panel="audit">&#x1F4DC; Audit</button>
-      </div>
-    </div>
+    <!-- Mobile bottom nav bar -->
+    <nav class="mobile-nav" id="mobileNav">
+      <button class="mobile-nav-btn" data-panel="sessions" title="Sessions">&#x1F4CB;</button>
+      <button class="mobile-nav-btn" data-panel="logs" title="Logs">&#x1F4CA;</button>
+      <button class="mobile-nav-btn" data-panel="services" title="Services">&#x2699;</button>
+      <button class="mobile-nav-btn" data-panel="messages" title="Messages">&#x1F4AC;</button>
+      <button class="mobile-nav-btn" data-panel="audit" title="Audit">&#x1F4DC;</button>
+    </nav>
 
     <!-- Command palette overlay -->
     <div class="palette-backdrop" id="paletteBackdrop"></div>
@@ -121,12 +167,13 @@
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 
   <!-- App modules (loaded as classic scripts in dependency order) -->
-  <script src="/js/app.js"></script>
-  <script src="/js/terminal.js"></script>
-  <script src="/js/input-bar.js"></script>
-  <script src="/js/panels.js"></script>
-  <script src="/js/palette.js"></script>
-  <script src="/js/platform.js"></script>
+  <script src="/js/app.js?v=5"></script>
+  <script src="/js/terminal.js?v=5"></script>
+  <script src="/js/input-bar.js?v=5"></script>
+  <script src="/js/panels.js?v=5"></script>
+  <script src="/js/palette.js?v=5"></script>
+  <script src="/js/platform.js?v=5"></script>
+  <script src="/js/fab.js?v=5"></script>
 
   <!-- Register service worker -->
   <script>

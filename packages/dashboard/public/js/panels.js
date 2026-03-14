@@ -60,15 +60,19 @@
     content.innerHTML = html;
     bindPanelEvents(panelName);
 
+    // Prevent background scrolling
+    document.body.style.overflow = 'hidden';
+
     // Show backdrop
     backdrop.style.display = 'block';
     // Force reflow for transition
     void backdrop.offsetHeight;
     backdrop.classList.add('visible');
 
-    // Slide up panel — default snap to 50%
+    // Slide up panel — sessions/newSession open at 85% (near fullscreen) for easier browsing
     container.classList.add('open');
-    container.style.transform = 'translateY(calc(100% - 50vh))';
+    var snapHeight = (panelName === 'sessions' || panelName === 'newSession') ? '85vh' : '50vh';
+    container.style.transform = 'translateY(calc(100% - ' + snapHeight + '))';
   }
 
   function openDesktop(panelName) {
@@ -135,12 +139,16 @@
       closeDesktop();
     }
     currentPanel = null;
+    updateMobileNavActive(null);
   }
 
   function closeMobile() {
     backdrop.classList.remove('visible');
     container.classList.remove('open');
     container.style.transform = 'translateY(100%)';
+
+    // Restore body scrolling
+    document.body.style.overflow = '';
 
     // Hide backdrop after transition
     setTimeout(function () {
@@ -228,12 +236,20 @@
 
   function onTouchStart(e) {
     if (!currentPanel || !isMobile()) return;
+    // ONLY allow panel drag from drag handle or panel header — never from content
+    var target = e.target;
+    var isDragHandle = target.closest('.panel-drag-handle');
+    var isPanelHeader = target.closest('.panel-header');
+
+    if (!isDragHandle && !isPanelHeader) return;
+
     var touch = e.touches[0];
     dragState.active = true;
     dragState.startY = touch.clientY;
     dragState.startTime = Date.now();
     dragState.currentY = touch.clientY;
     dragState.startTranslateY = getContainerTranslateY();
+    dragState.moved = false;
     container.classList.add('dragging');
   }
 
@@ -242,9 +258,17 @@
     var touch = e.touches[0];
     dragState.currentY = touch.clientY;
 
+    var deltaY = dragState.currentY - dragState.startY;
+
+    // Only start dragging after 8px movement (prevents accidental drags)
+    if (!dragState.moved && Math.abs(deltaY) < 8) return;
+    dragState.moved = true;
+
+    // Prevent scrolling while dragging the panel
+    e.preventDefault();
+
     if (dragState.rafId) cancelAnimationFrame(dragState.rafId);
     dragState.rafId = requestAnimationFrame(function () {
-      var deltaY = dragState.currentY - dragState.startY;
       var newTranslateY = dragState.startTranslateY + deltaY;
       // Clamp: don't let panel go above 85vh or below screen bottom
       var minY = window.innerHeight * (1 - 0.85);
@@ -258,6 +282,9 @@
     if (!dragState.active) return;
     dragState.active = false;
     container.classList.remove('dragging');
+
+    // If we didn't actually move, don't snap
+    if (!dragState.moved) return;
 
     if (dragState.rafId) {
       cancelAnimationFrame(dragState.rafId);
@@ -318,13 +345,10 @@
     container.style.transform = 'translateY(calc(100% - ' + (fraction * 100) + 'vh))';
   }
 
-  // Attach gesture listeners
+  // Attach gesture listeners — touchstart on whole container, touchmove non-passive to allow preventDefault
   if (container) {
-    var dragHandle = container.querySelector('.panel-drag-handle');
-    if (dragHandle) {
-      dragHandle.addEventListener('touchstart', onTouchStart, { passive: true });
-    }
-    container.addEventListener('touchmove', onTouchMove, { passive: true });
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
     container.addEventListener('touchend', onTouchEnd);
   }
 
@@ -393,12 +417,13 @@
           var isActive = s.id === window.app.activeSessionId;
           var statusClass = s.status || 'idle';
           html += '<div class="session-card' + (isActive ? ' active' : '') + '" data-session-id="' + esc(s.id) + '">';
-          html += '<span class="dot ' + esc(statusClass) + '"></span>';
+          html += '<div class="session-dot-wrap"><span class="dot ' + esc(statusClass) + '"></span></div>';
           html += '<div class="session-card-info">';
           html += '<div class="session-card-name">' + esc(s.name || s.id) + '</div>';
           html += '<div class="session-card-path">' + esc(s.projectPath || '') + '</div>';
           html += '</div>';
-          html += '<div class="session-card-status">' + esc(statusClass) + '</div>';
+          html += '<span class="session-status-label ' + esc(statusClass) + '">' + esc(statusClass) + '</span>';
+          html += '<span class="session-card-arrow">&#x203A;</span>';
           html += '<div class="delete-reveal">Delete</div>';
           html += '</div>';
         }
@@ -452,7 +477,7 @@
     if (typeof line === 'object' && line !== null) {
       var ts = formatTime(line.timestamp || line.ts);
       var svc = line.service || line.svc || '';
-      var msg = line.message || line.msg || line.data || '';
+      var msg = line.message || line.msg || line.text || line.data || '';
       var isStderr = line.stream === 'stderr';
       return '<div class="log-line' + (isStderr ? ' stderr' : '') + '">'
         + '<span class="ts">' + esc(ts) + '</span>'
@@ -485,6 +510,9 @@
 
     // Bridge card
     html += renderServiceCard('bridge', statuses.bridge || {});
+
+    // Tunnel card
+    html += renderServiceCard('tunnel', statuses.tunnel || {});
 
     // Platform toggles
     html += '<div id="platformToggles">';
@@ -694,44 +722,48 @@
   // --- New Session Panel ---
   function renderNewSessionPanel() {
     var html = '<div class="panel-header">';
+    html += '<button class="panel-btn" id="panelCancelNewSession" style="margin-right:auto;">&#x2190; Back</button>';
     html += '<h2>New Session</h2>';
     html += '</div>';
 
-    // Recent projects
+    // Recent projects (shown as quick-launch cards)
     var recent = getRecentProjects();
     if (recent.length > 0) {
-      html += '<h3 style="font-size:var(--font-ui-sm);color:var(--text-dim);margin-bottom:var(--space-sm);">Recent Projects</h3>';
+      html += '<h3 style="font-size:var(--font-ui-sm);color:var(--text-dim);margin:var(--space-sm) var(--space-md) var(--space-xs);">Recent Projects</h3>';
       html += '<div class="new-session-panel"><div class="recent-grid">';
       for (var i = 0; i < recent.length && i < 6; i++) {
         var r = recent[i];
         var name = r.name || r.path.split('/').pop() || r.path.split('\\').pop() || 'Project';
         html += '<div class="recent-project-card" data-path="' + esc(r.path) + '">';
+        html += '<span class="recent-project-icon">&#x1F4C1;</span>';
+        html += '<div class="recent-project-info">';
         html += '<div class="project-name">' + esc(name) + '</div>';
-        html += '<div class="project-path">' + esc(trunc(r.path, 40)) + '</div>';
+        html += '<div class="project-path">' + esc(trunc(r.path, 50)) + '</div>';
+        html += '</div>';
+        html += '<span class="recent-project-chevron">&#x203A;</span>';
         html += '</div>';
       }
       html += '</div></div>';
     }
 
     // Folder browser
-    html += '<h3 style="font-size:var(--font-ui-sm);color:var(--text-dim);margin-bottom:var(--space-sm);">Browse Folder</h3>';
+    html += '<h3 style="font-size:var(--font-ui-sm);color:var(--text-dim);margin:var(--space-sm) var(--space-md) var(--space-xs);">Browse Folder</h3>';
     html += '<div class="panel-folder-browser" id="panelFolderBrowser">';
     html += '<div class="panel-breadcrumbs" id="panelBreadcrumbs"></div>';
+    html += '<input class="panel-folder-search" id="panelFolderSearch" type="text" placeholder="Filter folders...">';
     html += '<div class="panel-folder-list" id="panelFolderList">';
     html += '<div class="panel-empty">Loading...</div>';
     html += '</div>';
     html += '</div>';
 
-    // Session name input
+    // Sticky footer: selected path + create button
+    html += '<div class="panel-new-session-footer" id="panelNewSessionFooter">';
     html += '<input class="panel-input" id="panelSessionName" type="text" placeholder="Session name (optional)">';
-
-    // Chosen path display
-    html += '<input class="panel-input" id="panelSessionPath" type="text" placeholder="Project path" readonly>';
-
-    // Actions
-    html += '<div class="panel-actions">';
-    html += '<button class="panel-btn" id="panelCancelNewSession">Cancel</button>';
-    html += '<button class="panel-btn primary" id="panelCreateSession">Create</button>';
+    html += '<div class="panel-selected-path">';
+    html += '<span class="selected-path-label">Path:</span>';
+    html += '<input class="panel-input" id="panelSessionPath" type="text" placeholder="Select a folder above" readonly>';
+    html += '</div>';
+    html += '<button class="panel-btn primary panel-create-btn" id="panelCreateSession">Create Session</button>';
     html += '</div>';
 
     // Load initial folder listing
@@ -741,15 +773,55 @@
   }
 
   var currentBrowsePath = '';
+  var cachedFolderEntries = [];
+
+  /**
+   * createSessionFromPath(path, name)
+   * Quick-creates a session from a given path. Used by recent project cards.
+   */
+  function createSessionFromPath(path, name) {
+    var body = { projectPath: path };
+    if (name) body.name = name;
+
+    fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (session) {
+        addRecentProject(path, name || session.name);
+        window.app.activeSessionId = session.id;
+        window.app.showToast('Session created: ' + (session.name || name || path));
+        if (window.app.terminal) {
+          window.app.terminal.getOrCreate(session.id, session.name || name || session.id);
+        }
+        close();
+        if (window.app.terminal) {
+          window.app.terminal.switchTo(session.id);
+        }
+        setTimeout(function () {
+          if (window.app.terminal) window.app.terminal.fitActive();
+        }, 100);
+      })
+      .catch(function () {
+        window.app.showToast('Failed to create session');
+      });
+  }
 
   function browseTo(path) {
     currentBrowsePath = path;
+
+    // Clear search filter on navigation
+    var searchInput = document.getElementById('panelFolderSearch');
+    if (searchInput) searchInput.value = '';
 
     fetch('/api/browse?path=' + encodeURIComponent(path))
       .then(function (res) { return res.json(); })
       .then(function (data) {
         renderBreadcrumbs(data.path || path);
-        renderFolderList(data.entries || data.folders || data.items || []);
+        cachedFolderEntries = data.entries || data.folders || data.items || [];
+        renderFolderList(cachedFolderEntries);
 
         // Update path input
         var pathInput = document.getElementById('panelSessionPath');
@@ -801,9 +873,17 @@
     }
 
     var html = '';
+    // "Use this folder" button — lets user pick the current directory
+    html += '<div class="panel-folder-item use-folder" data-action="use-current">';
+    html += '<span class="folder-icon" style="color:var(--accent);">&#x2713;</span>';
+    html += '<span class="folder-name" style="color:var(--accent);font-weight:600;">Use this folder</span>';
+    html += '</div>';
+
     // Parent directory link
     html += '<div class="panel-folder-item" data-path="..">';
-    html += '<span>&#x1F4C1;</span><span>..</span>';
+    html += '<span class="folder-icon">&#x1F4C1;</span>';
+    html += '<span class="folder-name">..</span>';
+    html += '<span class="folder-chevron">&#x203A;</span>';
     html += '</div>';
 
     for (var i = 0; i < entries.length; i++) {
@@ -815,7 +895,9 @@
 
       if (isDir) {
         html += '<div class="panel-folder-item" data-path="' + esc(entryPath) + '">';
-        html += '<span>' + icon + '</span><span>' + esc(name) + '</span>';
+        html += '<span class="folder-icon">' + icon + '</span>';
+        html += '<span class="folder-name">' + esc(name) + '</span>';
+        html += '<span class="folder-chevron">&#x203A;</span>';
         html += '</div>';
       }
     }
@@ -927,14 +1009,29 @@
       var sessionId = card.getAttribute('data-session-id');
       if (sessionId) {
         // Activate session
+        var sessionName = card.querySelector('.session-card-name');
+        var nameText = sessionName ? sessionName.textContent : sessionId;
         fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/activate', { method: 'POST' })
           .then(function (res) { return res.json(); })
           .then(function () {
             window.app.activeSessionId = sessionId;
+            // Create terminal immediately (before closing panel)
+            if (window.app.terminal) {
+              window.app.terminal.getOrCreate(sessionId, nameText);
+            }
+            // Close panel
+            close();
+            // Switch terminal immediately
             if (window.app.terminal) {
               window.app.terminal.switchTo(sessionId);
             }
-            close();
+            // Refit after panel animation completes (layout changes)
+            setTimeout(function () {
+              if (window.app.terminal) window.app.terminal.fitActive();
+            }, 100);
+            setTimeout(function () {
+              if (window.app.terminal) window.app.terminal.fitActive();
+            }, 350);
           })
           .catch(function () {
             window.app.showToast('Failed to activate session');
@@ -1072,11 +1169,20 @@
           .then(function (session) {
             addRecentProject(path, name || session.name);
             window.app.activeSessionId = session.id;
+            window.app.showToast('Session created');
+            if (window.app.terminal) {
+              window.app.terminal.getOrCreate(session.id, session.name || name || session.id);
+            }
+            close();
             if (window.app.terminal) {
               window.app.terminal.switchTo(session.id);
             }
-            window.app.showToast('Session created');
-            close();
+            setTimeout(function () {
+              if (window.app.terminal) window.app.terminal.fitActive();
+            }, 100);
+            setTimeout(function () {
+              if (window.app.terminal) window.app.terminal.fitActive();
+            }, 350);
           })
           .catch(function () {
             window.app.showToast('Failed to create session');
@@ -1084,16 +1190,35 @@
       });
     }
 
-    // Recent project cards (delegated)
+    // Folder search/filter
+    var folderSearch = document.getElementById('panelFolderSearch');
+    if (folderSearch) {
+      folderSearch.addEventListener('input', function () {
+        var query = folderSearch.value.trim().toLowerCase();
+        if (!query) {
+          renderFolderList(cachedFolderEntries);
+          return;
+        }
+        var filtered = cachedFolderEntries.filter(function (entry) {
+          var name = (entry.name || entry).toLowerCase();
+          return name.indexOf(query) !== -1;
+        });
+        renderFolderList(filtered);
+      });
+    }
+
+    // Recent project cards — single tap creates session immediately
     var target = isMobile() ? content : sidebarPanel;
     target.addEventListener('click', function (e) {
       var card = e.target.closest('.recent-project-card');
       if (card) {
         var path = card.getAttribute('data-path');
         if (path) {
-          var pathInput = document.getElementById('panelSessionPath');
-          if (pathInput) pathInput.value = path;
-          browseTo(path);
+          // Extract name from the card
+          var nameEl = card.querySelector('.project-name');
+          var name = nameEl ? nameEl.textContent : '';
+          // Create session immediately
+          createSessionFromPath(path, name);
         }
         return;
       }
@@ -1106,22 +1231,38 @@
         return;
       }
 
+      // "Use this folder" action
+      var useCurrent = e.target.closest('[data-action="use-current"]');
+      if (useCurrent) {
+        var pathInput = document.getElementById('panelSessionPath');
+        if (pathInput) pathInput.value = currentBrowsePath;
+        // Auto-fill session name from folder name
+        var nameInput = document.getElementById('panelSessionName');
+        if (nameInput && !nameInput.value) {
+          var sep = currentBrowsePath.indexOf('\\') !== -1 ? '\\' : '/';
+          var folderName = currentBrowsePath.split(sep).pop();
+          if (folderName) nameInput.value = folderName;
+        }
+        if (window.app.showToast) window.app.showToast('Selected: ' + currentBrowsePath);
+        return;
+      }
+
       // Folder item clicks
       var folderItem = e.target.closest('.panel-folder-item');
       if (folderItem) {
         var folderPath = folderItem.getAttribute('data-path');
         if (folderPath === '..') {
           // Go up
-          var sep = currentBrowsePath.indexOf('\\') !== -1 ? '\\' : '/';
-          var parts = currentBrowsePath.split(sep);
+          var sep2 = currentBrowsePath.indexOf('\\') !== -1 ? '\\' : '/';
+          var parts = currentBrowsePath.split(sep2);
           parts.pop();
-          var parentPath = parts.join(sep) || (sep === '\\' ? 'C:\\' : '/');
+          var parentPath = parts.join(sep2) || (sep2 === '\\' ? 'C:\\' : '/');
           browseTo(parentPath);
         } else if (folderPath) {
           browseTo(folderPath);
           // Auto-select this as the project path
-          var pathInput = document.getElementById('panelSessionPath');
-          if (pathInput) pathInput.value = folderPath;
+          var pathInput2 = document.getElementById('panelSessionPath');
+          if (pathInput2) pathInput2.value = folderPath;
         }
         return;
       }
@@ -1243,22 +1384,35 @@
   });
 
   // =========================================================================
-  // PANEL LAUNCHER (mobile)
+  // MOBILE BOTTOM NAV
   // =========================================================================
 
-  var launcher = document.getElementById('panelLauncher');
-  if (launcher) {
-    var launchBtns = launcher.querySelectorAll('.panel-launch-btn[data-panel]');
-    for (var j = 0; j < launchBtns.length; j++) {
+  var mobileNav = document.getElementById('mobileNav');
+  if (mobileNav) {
+    var navBtns = mobileNav.querySelectorAll('.mobile-nav-btn[data-panel]');
+    for (var j = 0; j < navBtns.length; j++) {
       (function (btn) {
         btn.addEventListener('click', function () {
           var panelName = btn.getAttribute('data-panel');
           if (panelName) {
-            launcher.classList.remove('open');
-            open(panelName);
+            toggle(panelName);
+            // Update active state on nav buttons
+            updateMobileNavActive(panelName);
           }
         });
-      })(launchBtns[j]);
+      })(navBtns[j]);
+    }
+  }
+
+  function updateMobileNavActive(activePanelName) {
+    if (!mobileNav) return;
+    var btns = mobileNav.querySelectorAll('.mobile-nav-btn');
+    for (var k = 0; k < btns.length; k++) {
+      if (btns[k].getAttribute('data-panel') === activePanelName && currentPanel === activePanelName) {
+        btns[k].classList.add('active');
+      } else {
+        btns[k].classList.remove('active');
+      }
     }
   }
 

@@ -248,45 +248,28 @@
 .send-btn:hover { background: #4393e6; }
 .send-btn:active { transform: scale(0.93); }
 
-/* === PANEL LAUNCHER (mobile) === */
-.panel-launcher {
-  display: none; /* Shown via JS on swipe-up */
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  border-radius: var(--radius) var(--radius) 0 0;
-  padding: var(--space-md);
-  z-index: var(--z-panel);
+/* === MOBILE BOTTOM NAV (hidden on mobile — replaced by FAB) === */
+.mobile-nav {
+  display: none;
 }
 
-.panel-launcher.open { display: block; }
-
-.panel-launcher-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-sm);
-}
-
-.panel-launch-btn {
+.mobile-nav-btn {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-md);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-size: var(--font-ui);
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 20px;
+  padding: var(--space-sm);
   cursor: pointer;
-  min-height: var(--touch-min);
+  min-height: 44px;
+  transition: color var(--duration-fast);
 }
 
-.panel-launch-btn:active {
-  background: rgba(88,166,255,0.08);
-}
+.mobile-nav-btn:active { color: var(--accent); }
+.mobile-nav-btn.active { color: var(--accent); }
 
 /* === FULLSCREEN MODE === */
 .app-container.fullscreen .status-bar { display: none; }
@@ -453,11 +436,262 @@
   }
 }
 
-/* === MOBILE: no sidebar === */
+/* === MOBILE: no sidebar, terminal fullscreen, FAB controls === */
 @media (max-width: 768px) {
   .sidebar { display: none; }
   .app-layout { display: contents; }
   .main-content { display: contents; }
+
+  /* Hide status bar, bottom nav, input bar, quick actions by default on mobile */
+  .status-bar { display: none; }
+  .mobile-nav { display: none !important; }
+  .input-bar { display: none; }
+  .quick-actions { display: none; }
+
+  /* Show input bar + quick actions when command bar is toggled visible */
+  .app-container.command-bar-visible .input-bar {
+    display: flex;
+    padding: var(--space-xs) var(--space-sm);
+    gap: var(--space-xs);
+    animation: slideUpIn var(--duration-normal) var(--ease-out);
+  }
+
+  .app-container.command-bar-visible .quick-actions {
+    display: flex;
+    min-height: 34px;
+    padding: 2px var(--space-sm);
+    animation: slideUpIn var(--duration-normal) var(--ease-out);
+  }
+
+  .app-container.command-bar-visible .input-bar textarea {
+    min-height: 36px;
+    padding: var(--space-xs) var(--space-sm);
+    font-size: 14px;
+  }
+
+  .app-container.command-bar-visible .send-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .app-container.command-bar-visible .quick-btn {
+    min-height: 28px;
+    padding: 2px var(--space-sm);
+    font-size: 11px;
+  }
+
+  /* Prevent overscroll bounce on the whole page */
+  .app-container {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .terminal-viewport {
+    overscroll-behavior: contain;
+  }
+}
+
+@keyframes slideUpIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* === FLOATING REPO PILL (mobile only) === */
+.repo-pill {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .repo-pill {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 6px 12px;
+    max-width: 50vw;
+    cursor: pointer;
+    transition: background var(--duration-fast);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .repo-pill:active {
+    background: rgba(0, 0, 0, 0.8);
+  }
+
+  .repo-pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+
+  .repo-pill-dot.stopped { background: var(--text-dim); }
+  .repo-pill-dot.running { background: var(--green); }
+  .repo-pill-dot.error { background: var(--red); }
+
+  .repo-pill-name {
+    font-size: var(--font-ui-xs);
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* === FAB (mobile only) === */
+.fab {
+  display: none;
+}
+
+.fab-menu {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    right: 16px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    z-index: 25;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    transition: transform var(--duration-fast), background var(--duration-fast);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .fab:active {
+    transform: scale(0.92);
+  }
+
+  .fab.open {
+    background: var(--text-dim);
+    transform: rotate(45deg);
+  }
+
+  .fab.dragging {
+    transition: none !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    transform: scale(1.08);
+  }
+
+  .fab.snapping {
+    transition: left 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                top 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow var(--duration-fast);
+  }
+
+  /* FAB shifts up when command bar is visible */
+  .app-container.command-bar-visible .fab {
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .fab-menu {
+    display: none;
+    position: fixed;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    right: 16px;
+    z-index: 24;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .fab-menu.open {
+    display: flex;
+  }
+
+  /* FAB menu shifts up when command bar is visible */
+  .app-container.command-bar-visible .fab-menu {
+    bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .fab-menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 10px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    color: var(--text);
+    font-size: var(--font-ui-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: 44px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+    animation: fabItemIn var(--duration-normal) var(--ease-out) forwards;
+    -webkit-tap-highlight-color: transparent;
+    transition: background var(--duration-fast);
+  }
+
+  .fab-menu-item:active {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .fab-menu-item.fab-menu-stop {
+    color: var(--red);
+    border-color: rgba(248, 81, 73, 0.3);
+  }
+
+  .fab-menu-item.fab-menu-stop:active {
+    background: rgba(248, 81, 73, 0.1);
+  }
+
+  .fab-menu-icon {
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .fab-menu-label {
+    font-weight: 500;
+  }
+
+  /* Staggered animation for menu items */
+  .fab-menu-item:nth-child(1) { animation-delay: 0ms; }
+  .fab-menu-item:nth-child(2) { animation-delay: 30ms; }
+  .fab-menu-item:nth-child(3) { animation-delay: 60ms; }
+  .fab-menu-item:nth-child(4) { animation-delay: 90ms; }
+  .fab-menu-item:nth-child(5) { animation-delay: 120ms; }
+
+  @keyframes fabItemIn {
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* FAB backdrop (dim when menu open) */
+  .fab-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 23;
+  }
+
+  .fab-backdrop.open {
+    display: block;
+  }
 }
 
 /* === TOASTS === */

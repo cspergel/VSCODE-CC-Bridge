@@ -12,7 +12,6 @@
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
   display: none;
-  touch-action: manipulation;
 }
 
 .term-pane.active {
@@ -28,6 +27,35 @@
 .term-pane .xterm-viewport {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile: let xterm handle its own scroll, prevent page bounce */
+@media (max-width: 768px) {
+  .term-pane {
+    touch-action: pan-y;
+    overflow: hidden;
+  }
+
+  .term-pane .xterm {
+    padding: 2px;
+  }
+
+  /* Prevent iOS overscroll bounce on terminal */
+  .term-pane .xterm-viewport {
+    overscroll-behavior: contain;
+  }
+
+  /* Thinner scrollbar on mobile */
+  .term-pane .xterm-viewport::-webkit-scrollbar {
+    width: 4px;
+  }
+  .term-pane .xterm-viewport::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .term-pane .xterm-viewport::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+  }
 }
 
 /* Fullscreen terminal: stretches to fill */
@@ -54,6 +82,16 @@
   transform: scale(1.5);
 }
 
+/* Mobile: ensure xterm's helper textarea stays accessible for keyboard input */
+@media (max-width: 768px) {
+  .xterm-helper-textarea {
+    position: absolute !important;
+    opacity: 0 !important;
+    width: 1px !important;
+    height: 1px !important;
+  }
+}
+
 /* Copy toast after long-press select */
 .copy-toast {
   position: absolute;
@@ -68,4 +106,242 @@
   font-size: var(--font-ui-sm);
   z-index: 10;
   pointer-events: none;
+}
+
+/* === MOBILE TERMINAL CONTROLS === */
+
+/* Select mode button — scissors icon, top-right */
+.term-select-btn,
+.term-keyboard-btn,
+.term-font-controls,
+.term-scroll-btn,
+.term-copy-btn {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .term-select-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text);
+    font-size: 16px;
+    cursor: pointer;
+    z-index: 6;
+    -webkit-tap-highlight-color: transparent;
+    transition: background var(--duration-fast);
+  }
+
+  .term-select-btn:active,
+  .term-select-btn.active {
+    background: rgba(88, 166, 255, 0.3);
+    border-color: var(--accent);
+  }
+
+  /* Keyboard toggle button */
+  .term-keyboard-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 52px;
+    right: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text);
+    font-size: 16px;
+    cursor: pointer;
+    z-index: 6;
+    -webkit-tap-highlight-color: transparent;
+    transition: background var(--duration-fast);
+  }
+
+  .term-keyboard-btn:active,
+  .term-keyboard-btn.active {
+    background: rgba(88, 166, 255, 0.3);
+    border-color: var(--accent);
+  }
+
+  /* Select overlay — absolute fill with selectable text */
+  .term-select-overlay {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    background: rgba(0, 0, 0, 0.85);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--space-sm);
+    font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-all;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  .term-select-overlay.active {
+    display: block;
+  }
+
+  /* Copy button — appears when text is selected */
+  .term-copy-btn {
+    display: none;
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 8;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm) var(--space-lg);
+    font-size: var(--font-ui);
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 44px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .term-copy-btn.visible {
+    display: block;
+  }
+
+  /* Font size controls — pill-shaped, below repo pill */
+  .term-font-controls {
+    display: flex;
+    align-items: center;
+    position: absolute;
+    top: 44px;
+    left: 8px;
+    z-index: 6;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 18px;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .term-font-btn {
+    width: 32px;
+    height: 32px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--duration-fast);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .term-font-btn:active {
+    background: rgba(88, 166, 255, 0.3);
+  }
+
+  .term-font-btn + .term-font-btn {
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Scroll buttons — right side */
+  .term-scroll-btn {
+    display: none; /* shown/hidden via JS */
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    right: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    z-index: 6;
+    -webkit-tap-highlight-color: transparent;
+    transition: background var(--duration-fast);
+  }
+
+  .term-scroll-btn:active {
+    background: rgba(88, 166, 255, 0.3);
+  }
+
+  .term-scroll-btn.term-scroll-top {
+    top: 96px;
+  }
+
+  .term-scroll-btn.term-scroll-bottom {
+    bottom: 16px;
+  }
+
+  .term-scroll-btn.visible {
+    display: flex;
+  }
+
+  /* Smooth scrolling on mobile */
+  .term-pane .xterm-viewport {
+    scroll-behavior: smooth;
+  }
+
+  /* Scroll progress track */
+  .term-scroll-track {
+    display: none;
+    position: absolute;
+    top: 50px;
+    right: 2px;
+    bottom: 50px;
+    width: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    z-index: 6;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .term-scroll-track.visible {
+    display: block;
+    opacity: 1;
+  }
+
+  .term-scroll-thumb {
+    width: 100%;
+    min-height: 20px;
+    background: var(--accent);
+    border-radius: 2px;
+    opacity: 0.6;
+    position: absolute;
+    top: 0;
+    transition: top 0.15s ease-out;
+  }
 }

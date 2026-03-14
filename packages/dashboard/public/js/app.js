@@ -54,7 +54,7 @@ window.app.truncate = truncate;
 window.app.formatDuration = formatDuration;
 
 // --- Service status tracking ---
-var serviceStatuses = { agent: {}, bridge: {} };
+var serviceStatuses = { agent: {}, bridge: {}, tunnel: {} };
 
 function updateServiceStatus(name, info) {
   serviceStatuses[name] = info;
@@ -66,6 +66,10 @@ function updateServiceStatus(name, info) {
   // Notify panels if services panel is open
   if (window.app.panels && window.app.panels.updateService) {
     window.app.panels.updateService(name, info);
+  }
+  // Update mobile repo pill dot
+  if (name === 'agent' && window.app.fab && window.app.fab.updateRepoPill) {
+    window.app.fab.updateRepoPill();
   }
 }
 
@@ -91,7 +95,17 @@ function updateSessionSelector(sessionId) {
     return;
   }
   var entry = window.app.terminal ? window.app.terminal.getEntry(sessionId) : null;
-  nameEl.textContent = (entry && entry.name) ? entry.name : sessionId;
+  var name = (entry && entry.name) ? entry.name : sessionId;
+  // Show short version: last segment if it looks like a UUID
+  if (name.length > 20 && name.indexOf('-') > 0) {
+    name = 'Session ' + name.slice(0, 8);
+  }
+  nameEl.textContent = name;
+
+  // Also update mobile repo pill
+  if (window.app.fab && window.app.fab.updateRepoPill) {
+    window.app.fab.updateRepoPill();
+  }
 }
 
 (function () {
@@ -140,12 +154,13 @@ function connectWS() {
         var data = msg.data.data;
         if (window.app.terminal) {
           window.app.terminal.writeData(sessionId, data);
-          // Auto-switch to first session
+          // Auto-switch to first session and update session name
           if (!window.app.activeSessionId) {
             window.app.terminal.switchTo(sessionId);
             window.app.activeSessionId = sessionId;
-            updateSessionSelector(sessionId);
           }
+          // Always update session selector (name may have been resolved)
+          updateSessionSelector(window.app.activeSessionId);
           // Context detection for quick actions
           if (window.app.inputBar && sessionId === window.app.activeSessionId) {
             var context = window.app.inputBar.detectContext(data);
@@ -156,10 +171,16 @@ function connectWS() {
       }
 
       case 'sessions_update':
-        if (window.app.terminal && Array.isArray(msg.data.sessions)) {
+        if (Array.isArray(msg.data.sessions)) {
           for (var j = 0; j < msg.data.sessions.length; j++) {
             var s = msg.data.sessions[j];
-            window.app.terminal.updateSessionName(s.id, s.name);
+            if (window.app.terminal) {
+              window.app.terminal.updateSessionName(s.id, s.name);
+            }
+            // Auto-set active session if none is set
+            if (!window.app.activeSessionId && s.isWhatsAppActive) {
+              window.app.activeSessionId = s.id;
+            }
           }
           updateSessionSelector(window.app.activeSessionId);
         }
@@ -233,7 +254,7 @@ setInterval(function () {
   fetch('/api/services')
     .then(function (res) { return res.json(); })
     .then(function (data) {
-      var names = ['agent', 'bridge'];
+      var names = ['agent', 'bridge', 'tunnel'];
       for (var i = 0; i < names.length; i++) {
         if (data[names[i]]) updateServiceStatus(names[i], data[names[i]]);
       }

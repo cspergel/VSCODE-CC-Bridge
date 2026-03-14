@@ -6,7 +6,7 @@ import { execSync, spawn } from "child_process";
 import { Database } from "@live-bridge/agent/db";
 import { ProcessManager, ServiceName } from "./process-manager";
 
-const VALID_SERVICES: ServiceName[] = ["agent", "bridge"];
+const VALID_SERVICES: ServiceName[] = ["agent", "bridge", "tunnel"];
 const VALID_ACTIONS = ["start", "stop", "restart"] as const;
 
 export function createApiRouter(pm: ProcessManager, db: Database): Router {
@@ -230,7 +230,8 @@ export function createApiRouter(pm: ProcessManager, db: Database): Router {
   });
 
   // Platform pause toggles
-  const platformPaused: Record<string, boolean> = { whatsapp: false, telegram: false };
+  // Platforms start paused by default — toggle on from dashboard when needed
+  const platformPaused: Record<string, boolean> = { whatsapp: true, telegram: true };
 
   router.get("/platforms", (_req: Request, res: Response) => {
     res.json(platformPaused);
