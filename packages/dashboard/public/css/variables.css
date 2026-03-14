@@ -1,0 +1,90 @@
+/* packages/dashboard/public/css/variables.css */
+/* Design tokens — single source of truth for the entire dashboard UI */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  /* Colors (GitHub dark theme) */
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --text-dim: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --red: #f85149;
+  --yellow: #d29922;
+  --orange: #db6d28;
+
+  /* Spacing — used everywhere */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  /* Font sizes — terminal font scales with breakpoints */
+  --font-term: 16px;
+  --font-ui: 14px;
+  --font-ui-sm: 12px;
+  --font-ui-xs: 11px;
+
+  /* Font families */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* Radii — slightly more rounded on mobile */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+
+  /* Z-index layers */
+  --z-terminal: 1;
+  --z-quick-actions: 10;
+  --z-input-bar: 10;
+  --z-status-bar: 20;
+  --z-sidebar: 30;
+  --z-panel-backdrop: 40;
+  --z-panel: 50;
+  --z-palette-backdrop: 60;
+  --z-palette: 70;
+  --z-toast: 80;
+  --z-modal: 90;
+
+  /* Transition timings */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-panel-open: 300ms;
+  --duration-panel-close: 200ms;
+
+  /* Touch target minimum */
+  --touch-min: 48px;
+}
+
+/* Tablet: adjust terminal font */
+@media (min-width: 480px) and (max-width: 768px) {
+  :root {
+    --font-term: 15px;
+  }
+}
+
+/* Desktop: tighter spacing, smaller radii */
+@media (min-width: 769px) {
+  :root {
+    --font-term: 14px;
+    --radius: 8px;
+    --radius-sm: 6px;
+  }
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
