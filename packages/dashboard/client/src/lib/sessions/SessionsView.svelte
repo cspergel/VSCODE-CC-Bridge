@@ -13,6 +13,71 @@
   let sessionName = $state('');
   let creating = $state(false);
 
+  // Pull-to-refresh state
+  let scrollEl;
+  let pullDistance = $state(0);
+  let pulling = $state(false);
+  let refreshing = $state(false);
+  let touchStartY = 0;
+  let isPulling = false;
+  const PULL_THRESHOLD = 60;
+
+  function onTouchStart(e) {
+    if (refreshing || view !== 'list') return;
+    // Only trigger if scrolled to top
+    if (scrollEl && scrollEl.scrollTop > 0) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchStartY = touch.clientY;
+    isPulling = true;
+  }
+
+  function onTouchMove(e) {
+    if (!isPulling || refreshing) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const dy = touch.clientY - touchStartY;
+    if (dy > 0) {
+      // Apply resistance — diminishing returns past threshold
+      pullDistance = Math.min(120, dy * 0.5);
+      pulling = pullDistance > 0;
+    } else {
+      pullDistance = 0;
+      pulling = false;
+    }
+  }
+
+  async function onTouchEnd() {
+    if (!isPulling) return;
+    isPulling = false;
+
+    if (pullDistance >= PULL_THRESHOLD && !refreshing) {
+      refreshing = true;
+      pullDistance = PULL_THRESHOLD; // Hold at threshold during refresh
+      haptic('light');
+      try {
+        await fetchSessions();
+        showToast('Sessions refreshed');
+      } catch {
+        showToast('Refresh failed');
+      }
+      refreshing = false;
+    }
+    pullDistance = 0;
+    pulling = false;
+  }
+
+  async function handleDelete(session) {
+    haptic('medium');
+    try {
+      await deleteSession(session.id);
+      showToast(`Deleted ${session.name || 'session'}`);
+    } catch {
+      showToast('Failed to delete session');
+      haptic('error');
+    }
+  }
+
   onMount(() => { fetchSessions(); });
 
   async function handleSelect(session) {
@@ -50,8 +115,33 @@
   }
 </script>
 
-<div class="sessions-view">
+<div
+  class="sessions-view"
+  bind:this={scrollEl}
+  ontouchstart={onTouchStart}
+  ontouchmove={onTouchMove}
+  ontouchend={onTouchEnd}
+  ontouchcancel={onTouchEnd}
+>
   {#if view === 'list'}
+    <!-- Pull-to-refresh indicator -->
+    {#if pulling || refreshing}
+      <div class="pull-indicator" style="height: {pullDistance}px">
+        <div class="pull-indicator-content" class:triggered={pullDistance >= PULL_THRESHOLD}>
+          {#if refreshing}
+            <span class="pull-spinner">&#x21BB;</span>
+            <span>Refreshing...</span>
+          {:else if pullDistance >= PULL_THRESHOLD}
+            <span class="pull-arrow up">&#x2191;</span>
+            <span>Release to refresh</span>
+          {:else}
+            <span class="pull-arrow">&#x2193;</span>
+            <span>Pull to refresh</span>
+          {/if}
+        </div>
+      </div>
+    {/if}
+
     <div class="section">
       <div class="section-header">
         <h3>Active Sessions</h3>
@@ -69,6 +159,7 @@
             session={s}
             isActive={s.id === $activeSessionId}
             onSelect={handleSelect}
+            onDelete={handleDelete}
           />
         {/each}
       {/if}
@@ -122,7 +213,42 @@
 </div>
 
 <style>
-  .sessions-view { padding: var(--s4); }
+  .sessions-view { padding: var(--s4); overflow-y: auto; }
+
+  .pull-indicator {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    overflow: hidden;
+    transition: height 0.2s var(--ease-out);
+  }
+  .pull-indicator-content {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    padding-bottom: var(--s2);
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    transition: color var(--duration-fast);
+  }
+  .pull-indicator-content.triggered {
+    color: var(--accent);
+  }
+  .pull-arrow {
+    font-size: 16px;
+    transition: transform 0.2s var(--ease-out);
+  }
+  .pull-arrow.up {
+    transform: rotate(180deg);
+  }
+  .pull-spinner {
+    font-size: 16px;
+    animation: ptr-spin 0.8s linear infinite;
+  }
+  @keyframes ptr-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
 
   .section { margin-bottom: var(--s6); }
   .section-header {
