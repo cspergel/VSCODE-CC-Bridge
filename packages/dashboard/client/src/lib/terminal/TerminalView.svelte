@@ -24,18 +24,19 @@
     if (!entry) return [];
     const buffer = entry.term.buffer.active;
     const lines = [];
-    // Read last 30 lines from cursor
-    const start = Math.max(0, buffer.cursorY - 30);
-    for (let i = start; i <= buffer.cursorY; i++) {
+    // Use absolute cursor position (baseY = scrollback offset + cursorY = viewport row)
+    const absY = buffer.baseY + buffer.cursorY;
+    const start = Math.max(0, absY - 40);
+    for (let i = start; i <= absY; i++) {
       const line = buffer.getLine(i);
       if (line) lines.push(line.translateToString().trim());
     }
     const parsed = [];
-    const re = /^(\d+)[.)]\s+(.+)/;
+    const re = /^(\d+)[.):\-]\s+(.+)/;
     for (const line of lines) {
       const m = line.match(re);
       if (m) {
-        parsed.push({ num: m[1], label: m[2].slice(0, 40) });
+        parsed.push({ num: m[1], label: m[2].slice(0, 50) });
       }
     }
     return parsed;
@@ -59,26 +60,28 @@
     if (!entry) return;
     const buffer = entry.term.buffer.active;
 
-    // Read last 3 lines for context clues
+    // Use absolute cursor position
+    const absY = buffer.baseY + buffer.cursorY;
+
+    // Read last 5 lines for context clues
     const recentLines = [];
-    for (let i = Math.max(0, buffer.cursorY - 3); i <= buffer.cursorY; i++) {
+    for (let i = Math.max(0, absY - 5); i <= absY; i++) {
       const line = buffer.getLine(i);
       if (line) recentLines.push(line.translateToString());
     }
     const recent = recentLines.join('\n');
 
-    let newContext = 'running';
+    let newContext = 'idle'; // Default to idle after debounce (output stopped)
     let newChoices = [];
 
     if (/\[Y\/n\]|\(y\/N\)|Allow|Approve|Confirm.*\?/i.test(recent)) {
       newContext = 'approval';
     } else if (/[●◯◉].*│|❯.*│/.test(recent)) {
       newContext = 'picker';
-    } else if (/[❯$>]\s*$/.test(recent)) {
-      newContext = 'idle';
     }
 
-    // Only check for numbered choices when idle (output finished, prompt showing)
+    // Always scan for numbered choices when output has settled (debounce ensures this)
+    // Skip only if we detected a specific interactive context (approval/picker)
     if (newContext === 'idle') {
       const parsed = parseChoicesFromBuffer(sessionId);
       if (parsed.length >= 2 && parsed.length <= 20) {

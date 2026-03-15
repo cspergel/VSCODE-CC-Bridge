@@ -17,6 +17,7 @@
   let showScrollBottom = $state(false);
   let selectOverlayText = $state('');
   let termAreaEl = $state(null);
+  let toolsOpen = $state(false);
 
   // Pinch-to-zoom state
   let pinchStartDist = 0;
@@ -240,138 +241,46 @@
   &#x2328; Type
 </button>
 
-<!-- Control buttons -->
-<div class="terminal-controls">
-  <!-- Scroll buttons -->
+<!-- Scroll buttons (always visible when needed) -->
+<div class="scroll-controls">
   {#if showScrollTop}
-    <button class="scroll-btn top" onclick={scrollToTop} title="Scroll to top">
-      &#x2191;
-    </button>
+    <button class="scroll-btn" onclick={scrollToTop} title="Scroll to top">&#x2191;</button>
   {/if}
   {#if showScrollBottom}
-    <button class="scroll-btn bottom" onclick={scrollToBottom} title="Scroll to bottom">
-      &#x2193;
-    </button>
+    <button class="scroll-btn" onclick={scrollToBottom} title="Scroll to bottom">&#x2193;</button>
   {/if}
+</div>
 
-  <!-- Toolbar row -->
-  <div class="controls-row">
-    <button
-      class="ctrl-btn"
-      class:active={selectMode}
-      onclick={toggleSelectMode}
-      title="Select text"
-    >
-      &#x2263;
-    </button>
+<!-- Tools toggle button + expandable panel -->
+<div class="tools-area">
+  <button
+    class="tools-toggle"
+    class:open={toolsOpen}
+    onclick={() => { toolsOpen = !toolsOpen; haptic('light'); }}
+    title="Terminal tools"
+  >
+    &#x2699;
+  </button>
 
-    <button
-      class="ctrl-btn"
-      class:active={keyboardActive}
-      onclick={toggleKeyboard}
-      title="Toggle keyboard"
-    >
-      &#x2328;
-    </button>
-
-    <button class="ctrl-btn" onclick={() => changeFontSize(-FONT_SIZE_STEP)} title="Decrease font">
-      A&#x2212;
-    </button>
-
-    <button class="ctrl-btn" onclick={() => changeFontSize(FONT_SIZE_STEP)} title="Increase font">
-      A+
-    </button>
-  </div>
+  {#if toolsOpen}
+    <div class="tools-panel">
+      <button class="tool-btn" onclick={toggleSelectMode} title="Select text">
+        &#x2263; Select
+      </button>
+      <button class="tool-btn" onclick={() => changeFontSize(-FONT_SIZE_STEP)} title="Smaller font">
+        A&#x2212;
+      </button>
+      <button class="tool-btn" onclick={() => changeFontSize(FONT_SIZE_STEP)} title="Larger font">
+        A+
+      </button>
+      <button class="tool-btn" onclick={toggleKeyboard} title="Toggle keyboard">
+        &#x2328; Keys
+      </button>
+    </div>
+  {/if}
 </div>
 
 <style>
-  .terminal-controls {
-    position: absolute;
-    right: var(--s2);
-    top: var(--s2);
-    bottom: var(--s2);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: flex-end;
-    z-index: var(--z-controls);
-    pointer-events: none;
-  }
-
-  .controls-row {
-    display: flex;
-    gap: var(--s1);
-    pointer-events: auto;
-    background: rgba(22, 27, 34, 0.85);
-    border-radius: var(--r-md);
-    padding: 2px;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid var(--border-subtle);
-  }
-
-  .ctrl-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--text-secondary);
-    border: none;
-    font-size: var(--text-sm);
-    font-family: var(--font-sans);
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background var(--duration-fast), color var(--duration-fast);
-    -webkit-tap-highlight-color: transparent;
-    min-height: var(--touch-min);
-    min-width: var(--touch-min);
-    padding: 0;
-  }
-  .ctrl-btn:active {
-    background: var(--accent-subtle);
-  }
-  .ctrl-btn.active {
-    background: var(--accent);
-    color: #fff;
-  }
-  .ctrl-btn.accent {
-    background: var(--accent);
-    color: #fff;
-  }
-
-  .scroll-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: var(--r-full);
-    background: rgba(22, 27, 34, 0.85);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-subtle);
-    font-size: 16px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: auto;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    -webkit-tap-highlight-color: transparent;
-    min-height: var(--touch-min);
-    min-width: var(--touch-min);
-  }
-  .scroll-btn:active {
-    background: var(--accent-subtle);
-  }
-  .scroll-btn.top {
-    margin-bottom: auto;
-  }
-  .scroll-btn.bottom {
-    margin-top: auto;
-    margin-bottom: var(--s2);
-  }
-
   /* Select mode overlay */
   .select-overlay {
     position: absolute;
@@ -405,6 +314,28 @@
     flex-shrink: 0;
   }
 
+  .ctrl-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    font-size: var(--text-sm);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    min-height: var(--touch-min);
+    min-width: var(--touch-min);
+    padding: 0;
+  }
+  .ctrl-btn:active { background: var(--accent-subtle); }
+  .ctrl-btn.accent { background: var(--accent); color: #fff; }
+
   /* Floating "Type" pill */
   .type-pill {
     position: absolute;
@@ -435,16 +366,118 @@
     border-color: var(--accent);
   }
 
+  /* Scroll buttons - top-right corner */
+  .scroll-controls {
+    position: absolute;
+    right: var(--s2);
+    top: var(--s2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    z-index: var(--z-controls);
+  }
+
+  .scroll-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-full);
+    background: rgba(22, 27, 34, 0.85);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    -webkit-tap-highlight-color: transparent;
+    min-height: var(--touch-min);
+    min-width: var(--touch-min);
+  }
+  .scroll-btn:active { background: var(--accent-subtle); }
+
+  /* Tools toggle + panel - bottom-right corner */
+  .tools-area {
+    position: absolute;
+    right: var(--s2);
+    bottom: 60px; /* above Type pill */
+    z-index: var(--z-controls);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--s2);
+  }
+
+  .tools-toggle {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--r-full);
+    background: rgba(22, 27, 34, 0.85);
+    color: var(--text-tertiary);
+    border: 1px solid var(--border-subtle);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    -webkit-tap-highlight-color: transparent;
+    min-height: var(--touch-min);
+    min-width: var(--touch-min);
+    transition: transform var(--duration-normal), background var(--duration-fast);
+  }
+  .tools-toggle.open {
+    transform: rotate(90deg);
+    background: var(--accent-subtle);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .tools-toggle:active { background: var(--accent-subtle); }
+
+  .tools-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s1);
+    background: rgba(22, 27, 34, 0.92);
+    border-radius: var(--r-md);
+    padding: var(--s1);
+    border: 1px solid var(--border-subtle);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    animation: toolsSlideUp 150ms var(--ease-out);
+  }
+
+  @keyframes toolsSlideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .tool-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    padding: var(--s2) var(--s3);
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-radius: var(--r-sm);
+    font-size: var(--text-sm);
+    font-family: var(--font-sans);
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: var(--touch-min);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tool-btn:active { background: var(--accent-subtle); color: var(--accent); }
+
   /* Only show on mobile-width screens */
   @media (min-width: 769px) {
-    .terminal-controls {
-      display: none;
-    }
-    .select-overlay {
-      display: none;
-    }
-    .type-pill {
-      display: none;
-    }
+    .tools-area { display: none; }
+    .scroll-controls { display: none; }
+    .select-overlay { display: none; }
+    .type-pill { display: none; }
   }
 </style>
