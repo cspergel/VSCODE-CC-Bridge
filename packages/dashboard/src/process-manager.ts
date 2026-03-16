@@ -110,16 +110,29 @@ export class ProcessManager extends EventEmitter {
 
     let child: ChildProcess;
 
+    // Strip VS Code env vars to prevent child processes from launching VS Code
+    const cleanEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v === undefined) continue;
+      if (k === "CLAUDECODE") continue;
+      if (k === "EDITOR" || k === "VISUAL") continue;
+      if (k === "TERM_PROGRAM" && v.toLowerCase().includes("vscode")) continue;
+      if (k.startsWith("VSCODE_")) continue;
+    cleanEnv[k] = v;
+    }
+
     if (svc.spawnMode === "spawn" && svc.spawnCmd) {
       // External binary (e.g. cloudflared)
       child = spawn(svc.spawnCmd, svc.spawnArgs || [], {
         stdio: ["ignore", "pipe", "pipe"],
+        env: cleanEnv,
       });
     } else {
       // Node module (fork with IPC)
       child = fork(svc.entryPath, [], {
         stdio: ["ignore", "pipe", "pipe", "ipc"],
         silent: true,
+        env: cleanEnv,
       });
     }
 

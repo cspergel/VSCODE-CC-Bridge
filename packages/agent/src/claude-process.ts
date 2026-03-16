@@ -42,12 +42,22 @@ export class ClaudeProcess extends EventEmitter {
     // Pass prompt via stdin to avoid shell escaping issues on Windows
     // (shell: true + args with special chars causes cmd.exe to misinterpret)
 
-    // Strip CLAUDECODE env to avoid nested-session error
-    const { CLAUDECODE, ...cleanEnv } = process.env;
+    // Strip env vars that cause issues:
+    // - CLAUDECODE: prevents nested session error
+    // - EDITOR/VISUAL/VSCODE_*: prevents spawning VS Code instances
+    const cleanEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v === undefined) continue;
+      if (k === "CLAUDECODE") continue;
+      if (k === "EDITOR" || k === "VISUAL") continue;
+      if (k === "TERM_PROGRAM" && v.toLowerCase().includes("vscode")) continue;
+      if (k.startsWith("VSCODE_")) continue;
+      cleanEnv[k] = v;
+    }
 
     this.proc = spawn("claude", args, {
       cwd: this.projectPath,
-      env: cleanEnv as Record<string, string>,
+      env: cleanEnv,
       stdio: ["pipe", "pipe", "pipe"],
     });
 
